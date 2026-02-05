@@ -20,6 +20,7 @@ type Daemon struct {
 	configPath string
 	processes  map[string]*process.Process
 	logMgr     *LogManager
+	supervisor *Supervisor
 
 	server *Server
 	ctx    context.Context
@@ -48,6 +49,7 @@ func New(configPath string) (*Daemon, error) {
 		ctx:        ctx,
 		cancel:     cancel,
 	}
+	d.supervisor = NewSupervisor(d)
 
 	// Initialize processes
 	for name, svc := range cfg.Services {
@@ -124,6 +126,9 @@ func (d *Daemon) StartServices(services []string) (started, failed []string) {
 			failed = append(failed, name)
 		} else {
 			started = append(started, name)
+			// Start monitoring for restart policy
+			svc := d.config.Services[name]
+			d.supervisor.StartMonitoring(d.ctx, name, proc, svc)
 		}
 	}
 
@@ -156,6 +161,9 @@ func (d *Daemon) StopServices(services []string) (stopped []string) {
 		if proc.GetState() == process.StateStopped || proc.GetState() == process.StateFailed {
 			continue
 		}
+
+		// Stop monitoring before stopping the process
+		d.supervisor.StopMonitoring(name)
 
 		if err := proc.Stop(gracefulTimeout); err == nil {
 			stopped = append(stopped, name)
