@@ -67,6 +67,10 @@ func New(configPath string) (*Daemon, error) {
 
 // SocketPath returns the path to the Unix socket.
 func SocketPath() string {
+	// Allow override via COMPROC_SOCKET environment variable
+	if path := os.Getenv("COMPROC_SOCKET"); path != "" {
+		return path
+	}
 	// Use XDG_RUNTIME_DIR if available, otherwise fall back to tmp
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
 		return filepath.Join(dir, "comproc.sock")
