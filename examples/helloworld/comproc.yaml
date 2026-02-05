@@ -1,0 +1,68 @@
+# comproc demo configuration
+# Usage:
+#   comproc up      # Start all services
+#   comproc status  # Check status
+#   comproc logs -f # Follow logs
+#   comproc down    # Stop all
+#
+# Press Ctrl+C to exit
+
+services:
+  # Database (starts first)
+  db:
+    command: |
+      sh -c '
+        echo "[db] Starting database..."
+        sleep 1
+        echo "[db] Database ready on port 5432"
+        while true; do
+          sleep 5
+          echo "[db] Health check: OK"
+        done
+      '
+    restart: always
+
+  # API server (starts after db)
+  api:
+    command: |
+      sh -c '
+        echo "[api] Connecting to database..."
+        sleep 1
+        echo "[api] API server started on :8080"
+        count=0
+        while true; do
+          count=$((count + 1))
+          echo "[api] Request #$count processed"
+          sleep 3
+        done
+      '
+    restart: on-failure
+    depends_on:
+      - db
+
+  # Frontend (starts after api)
+  frontend:
+    command: |
+      sh -c '
+        echo "[frontend] Starting dev server..."
+        sleep 1
+        echo "[frontend] Ready at http://localhost:3000"
+        while true; do
+          sleep 4
+          echo "[frontend] Hot reload triggered"
+        done
+      '
+    restart: on-failure
+    depends_on:
+      - api
+
+  # Short-lived worker (demonstrates crash and restart)
+  worker:
+    command: |
+      sh -c '
+        echo "[worker] Worker started"
+        sleep 3
+        echo "[worker] Simulating crash..."
+        exit 1
+      '
+    restart: on-failure
