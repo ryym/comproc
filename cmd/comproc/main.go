@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/ryym/comproc/internal/cli"
@@ -50,6 +51,9 @@ func run() error {
 		return runRestart(socketPath, cmdArgs)
 	case "logs":
 		return runLogs(socketPath, cmdArgs)
+	case "__daemon":
+		// Internal command for detached mode
+		return runDaemon(socketPath, configPath, cmdArgs)
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
@@ -69,7 +73,62 @@ func runUp(socketPath, configPath string, args []string) error {
 		return fmt.Errorf("invalid config path: %w", err)
 	}
 
-	return cli.RunUp(socketPath, absConfigPath, fs.Args(), *detach)
+	if *detach {
+		return startDetached(absConfigPath, socketPath, fs.Args())
+	}
+
+	return cli.RunUp(socketPath, absConfigPath, fs.Args())
+}
+
+// startDetached starts the daemon in a background process.
+func startDetached(configPath, socketPath string, services []string) error {
+	// Check if daemon is already running
+	client := cli.NewClient(socketPath)
+	if err := client.Connect(); err == nil {
+		client.Close()
+		// Daemon already running, just send up request
+		result, err := client.Up(services)
+		if err != nil {
+			return err
+		}
+		if len(result.Started) > 0 {
+			fmt.Printf("Started: %v\n", result.Started)
+		}
+		return nil
+	}
+
+	// Start daemon process
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	// Build arguments for daemon process
+	daemonArgs := []string{"-f", configPath, "__daemon"}
+	daemonArgs = append(daemonArgs, services...)
+
+	cmd := exec.Command(exe, daemonArgs...)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+
+	// Detach from parent process
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start daemon: %w", err)
+	}
+
+	fmt.Printf("Daemon started (PID: %d)\n", cmd.Process.Pid)
+
+	// Don't wait for the process - it runs in background
+	// Release the process so it doesn't become a zombie
+	cmd.Process.Release()
+
+	return nil
+}
+
+// runDaemon runs as the background daemon process.
+func runDaemon(socketPath, configPath string, services []string) error {
+	return cli.RunDaemon(socketPath, configPath, services)
 }
 
 func runDown(socketPath string, args []string) error {

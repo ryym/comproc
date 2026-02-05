@@ -12,15 +12,12 @@ import (
 	"github.com/ryym/comproc/internal/protocol"
 )
 
-// RunUp executes the 'up' command.
-func RunUp(socketPath string, configPath string, services []string, detach bool) error {
+// RunUp executes the 'up' command (foreground mode).
+func RunUp(socketPath string, configPath string, services []string) error {
 	// Check if daemon is running
 	client := NewClient(socketPath)
 	if err := client.Connect(); err != nil {
-		// Daemon not running, start it
-		if detach {
-			return startDaemonDetached(configPath, socketPath)
-		}
+		// Daemon not running, start it in foreground
 		return runDaemonForeground(configPath, socketPath, services)
 	}
 	defer client.Close()
@@ -190,6 +187,14 @@ func runDaemonForeground(configPath string, socketPath string, services []string
 		return err
 	}
 
+	// Subscribe to logs before starting services
+	logCh := d.SubscribeLogs(nil)
+	go func() {
+		for line := range logCh {
+			fmt.Printf("%s | %s\n", line.Service, line.Line)
+		}
+	}()
+
 	// Start services
 	started, failed := d.StartServices(services)
 	if len(started) > 0 {
@@ -213,9 +218,25 @@ func runDaemonForeground(configPath string, socketPath string, services []string
 	return d.Run(socketPath)
 }
 
-// startDaemonDetached starts the daemon in the background.
-func startDaemonDetached(configPath string, socketPath string) error {
-	// For now, we don't support true detached mode
-	// The user should run `comproc up` without -d in the background
-	return fmt.Errorf("detached mode not yet implemented; run 'comproc up' without -d or use '&'")
+// RunDaemon runs the daemon (used by detached mode).
+func RunDaemon(socketPath, configPath string, services []string) error {
+	d, err := daemon.New(configPath)
+	if err != nil {
+		return err
+	}
+
+	// Start services
+	d.StartServices(services)
+
+	// Handle shutdown signals
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigCh
+		d.Shutdown()
+	}()
+
+	// Run the daemon (this blocks)
+	return d.Run(socketPath)
 }
