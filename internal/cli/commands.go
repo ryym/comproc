@@ -129,6 +129,17 @@ func RunLogs(socketPath string, services []string, lines int, follow bool) error
 	}
 	defer client.Close()
 
+	// Get all service names for proper alignment
+	status, err := client.Status()
+	if err != nil {
+		return fmt.Errorf("status failed: %w", err)
+	}
+	var serviceNames []string
+	for _, svc := range status.Services {
+		serviceNames = append(serviceNames, svc.Name)
+	}
+	formatter := NewLogFormatter(os.Stdout, serviceNames)
+
 	result, err := client.Logs(services, lines, follow)
 	if err != nil {
 		return fmt.Errorf("logs failed: %w", err)
@@ -136,7 +147,7 @@ func RunLogs(socketPath string, services []string, lines int, follow bool) error
 
 	// Print initial logs
 	for _, entry := range result.Lines {
-		printLogEntry(&entry)
+		printLogEntry(formatter, &entry)
 	}
 
 	if !follow {
@@ -170,14 +181,14 @@ func RunLogs(socketPath string, services []string, lines int, follow bool) error
 		if notification.Method == protocol.MethodLog {
 			var entry protocol.LogEntry
 			if err := notification.ParseParams(&entry); err == nil {
-				printLogEntry(&entry)
+				printLogEntry(formatter, &entry)
 			}
 		}
 	}
 }
 
-func printLogEntry(entry *protocol.LogEntry) {
-	fmt.Printf("%s | %s\n", entry.Service, entry.Line)
+func printLogEntry(formatter *LogFormatter, entry *protocol.LogEntry) {
+	formatter.PrintLine(entry.Service, entry.Line)
 }
 
 // runDaemonForeground runs the daemon in the foreground and starts services.
@@ -187,11 +198,14 @@ func runDaemonForeground(configPath string, socketPath string, services []string
 		return err
 	}
 
+	// Create formatter with all service names
+	formatter := NewLogFormatter(os.Stdout, d.ServiceNames())
+
 	// Subscribe to logs before starting services
 	logCh := d.SubscribeLogs(nil)
 	go func() {
 		for line := range logCh {
-			fmt.Printf("%s | %s\n", line.Service, line.Line)
+			formatter.PrintLine(line.Service, line.Line)
 		}
 	}()
 

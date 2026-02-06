@@ -310,3 +310,15 @@ type ServiceStatus struct {
 	StartedAt string
 	ExitCode  int
 }
+
+// ServiceNames returns the names of all configured services.
+func (d *Daemon) ServiceNames() []string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	names := make([]string, 0, len(d.processes))
+	for name := range d.processes {
+		names = append(names, name)
+	}
+	return names
+}
