@@ -185,7 +185,13 @@ type ServiceStatus struct {
 func (f *Fixture) GetStatus() ([]ServiceStatus, error) {
 	f.t.Helper()
 
-	stdout, _, err := f.Run("status")
+	var args []string
+	if f.ConfigPath != "" {
+		args = append(args, "-f", f.ConfigPath)
+	}
+	args = append(args, "status")
+
+	stdout, _, err := f.Run(args...)
 	if err != nil {
 		return nil, err
 	}

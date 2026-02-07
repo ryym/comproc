@@ -331,11 +331,38 @@ func TestStatus_NoDaemon(t *testing.T) {
 
 	f := NewFixture(t)
 
-	// No daemon running
+	// No daemon running, no config file
 	stdout, _, _ := f.Run("status")
 
-	if !strings.Contains(stdout, "Daemon is not running") {
-		t.Errorf("expected 'Daemon is not running', got: %s", stdout)
+	if !strings.Contains(stdout, "No services defined") {
+		t.Errorf("expected 'No services defined', got: %s", stdout)
+	}
+}
+
+func TestStatus_NoDaemon_WithConfig(t *testing.T) {
+	skipIfShort(t)
+
+	f := NewFixture(t)
+	config := `
+services:
+  app:
+    command: sleep 60
+  db:
+    command: sleep 60
+`
+	f.WriteConfig(config)
+
+	// No daemon running, but config exists
+	stdout, _, _ := f.Run("-f", f.ConfigPath, "status")
+
+	if !strings.Contains(stdout, "app") || !strings.Contains(stdout, "stopped") {
+		t.Errorf("expected services shown as stopped, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "db") {
+		t.Errorf("expected db service in output, got: %s", stdout)
+	}
+	if strings.Contains(stdout, "Daemon") || strings.Contains(stdout, "daemon") {
+		t.Errorf("should not contain the word 'daemon', got: %s", stdout)
 	}
 }
 
@@ -657,5 +684,33 @@ func TestDown_NoDaemon(t *testing.T) {
 	// Should produce no output (or empty)
 	if strings.TrimSpace(stdout) != "" {
 		t.Errorf("expected empty output, got: %s", stdout)
+	}
+}
+
+func TestRestart_NoDaemon(t *testing.T) {
+	skipIfShort(t)
+
+	f := NewFixture(t)
+
+	stdout, _, err := f.Run("restart")
+	if err != nil {
+		t.Errorf("expected restart to succeed when no daemon, got error: %v", err)
+	}
+	if !strings.Contains(stdout, "No services running") {
+		t.Errorf("expected 'No services running', got: %s", stdout)
+	}
+}
+
+func TestLogs_NoDaemon(t *testing.T) {
+	skipIfShort(t)
+
+	f := NewFixture(t)
+
+	stdout, _, err := f.Run("logs")
+	if err != nil {
+		t.Errorf("expected logs to succeed when no daemon, got error: %v", err)
+	}
+	if !strings.Contains(stdout, "No logs available") {
+		t.Errorf("expected 'No logs available', got: %s", stdout)
 	}
 }

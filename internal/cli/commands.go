@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"text/tabwriter"
 
+	"github.com/ryym/comproc/internal/config"
 	"github.com/ryym/comproc/internal/daemon"
 	"github.com/ryym/comproc/internal/protocol"
 )
@@ -130,11 +131,10 @@ func RunStop(socketPath string, services []string) error {
 }
 
 // RunStatus executes the 'status' command.
-func RunStatus(socketPath string) error {
+func RunStatus(socketPath, configPath string) error {
 	client := NewClient(socketPath)
 	if err := client.Connect(); err != nil {
-		fmt.Println("Daemon is not running")
-		return nil
+		return showOfflineStatus(configPath)
 	}
 	defer client.Close()
 
@@ -148,9 +148,34 @@ func RunStatus(socketPath string) error {
 		return nil
 	}
 
+	printStatusTable(result.Services)
+	return nil
+}
+
+// showOfflineStatus loads the config file and shows all services as stopped.
+func showOfflineStatus(configPath string) error {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		fmt.Println("No services defined")
+		return nil
+	}
+
+	var services []protocol.ServiceStatus
+	for name := range cfg.Services {
+		services = append(services, protocol.ServiceStatus{
+			Name:  name,
+			State: "stopped",
+		})
+	}
+
+	printStatusTable(services)
+	return nil
+}
+
+func printStatusTable(services []protocol.ServiceStatus) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tSTATE\tPID\tRESTARTS\tSTARTED")
-	for _, svc := range result.Services {
+	for _, svc := range services {
 		pid := "-"
 		if svc.PID > 0 {
 			pid = fmt.Sprintf("%d", svc.PID)
@@ -162,15 +187,14 @@ func RunStatus(socketPath string) error {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n", svc.Name, svc.State, pid, svc.Restarts, started)
 	}
 	w.Flush()
-
-	return nil
 }
 
 // RunRestart executes the 'restart' command.
 func RunRestart(socketPath string, services []string) error {
 	client := NewClient(socketPath)
 	if err := client.Connect(); err != nil {
-		return fmt.Errorf("daemon is not running")
+		fmt.Println("No services running")
+		return nil
 	}
 	defer client.Close()
 
@@ -194,7 +218,8 @@ func RunRestart(socketPath string, services []string) error {
 func RunLogs(socketPath string, services []string, lines int, follow bool) error {
 	client := NewClient(socketPath)
 	if err := client.Connect(); err != nil {
-		return fmt.Errorf("daemon is not running")
+		fmt.Println("No logs available")
+		return nil
 	}
 	defer client.Close()
 

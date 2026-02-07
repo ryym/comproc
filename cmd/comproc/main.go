@@ -36,26 +36,31 @@ func run() error {
 		return nil
 	}
 
+	absConfigPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return fmt.Errorf("invalid config path: %w", err)
+	}
+
 	socketPath := daemon.SocketPath()
 	cmd := args[0]
 	cmdArgs := args[1:]
 
 	switch cmd {
 	case "up":
-		return runUp(socketPath, configPath, cmdArgs)
+		return runUp(socketPath, absConfigPath, cmdArgs)
 	case "down":
 		return cli.RunDown(socketPath)
 	case "stop":
 		return runStop(socketPath, cmdArgs)
 	case "status", "ps":
-		return cli.RunStatus(socketPath)
+		return cli.RunStatus(socketPath, absConfigPath)
 	case "restart":
 		return runRestart(socketPath, cmdArgs)
 	case "logs":
 		return runLogs(socketPath, cmdArgs)
 	case "__daemon":
 		// Internal command for detached mode
-		return runDaemon(socketPath, configPath, cmdArgs)
+		return runDaemon(socketPath, absConfigPath, cmdArgs)
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
@@ -69,17 +74,11 @@ func runUp(socketPath, configPath string, args []string) error {
 	detach := fs.Bool("d", false, "Run in detached mode (background)")
 	fs.Parse(args)
 
-	// Resolve config path
-	absConfigPath, err := filepath.Abs(configPath)
-	if err != nil {
-		return fmt.Errorf("invalid config path: %w", err)
-	}
-
 	if *detach {
-		return startDetached(absConfigPath, socketPath, fs.Args())
+		return startDetached(configPath, socketPath, fs.Args())
 	}
 
-	return cli.RunUp(socketPath, absConfigPath, fs.Args())
+	return cli.RunUp(socketPath, configPath, fs.Args())
 }
 
 // startDetached starts the daemon in a background process.
@@ -119,7 +118,7 @@ func startDetached(configPath, socketPath string, services []string) error {
 		return fmt.Errorf("failed to start daemon: %w", err)
 	}
 
-	fmt.Printf("Daemon started (PID: %d)\n", cmd.Process.Pid)
+	fmt.Printf("Started in background (PID: %d)\n", cmd.Process.Pid)
 
 	// Don't wait for the process - it runs in background
 	// Release the process so it doesn't become a zombie

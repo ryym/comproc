@@ -31,7 +31,7 @@ func NewClient(socketPath string) *Client {
 func (c *Client) Connect() error {
 	conn, err := net.Dial("unix", c.socketPath)
 	if err != nil {
-		return fmt.Errorf("failed to connect to daemon: %w", err)
+		return fmt.Errorf("failed to connect: %w", err)
 	}
 	c.conn = conn
 	c.reader = bufio.NewReader(conn)
