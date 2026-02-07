@@ -43,7 +43,7 @@ func run() error {
 		return fmt.Errorf("invalid config path: %w", err)
 	}
 
-	socketPath := daemon.SocketPath()
+	socketPath := daemon.SocketPath(absConfigPath)
 	cmd := args[0]
 	cmdArgs := args[1:]
 

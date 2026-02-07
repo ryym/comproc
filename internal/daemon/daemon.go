@@ -3,6 +3,8 @@ package daemon
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,17 +68,22 @@ func New(configPath string) (*Daemon, error) {
 	return d, nil
 }
 
-// SocketPath returns the path to the Unix socket.
-func SocketPath() string {
+// SocketPath returns the path to the Unix socket for the given config file.
+// Each config file path gets its own socket, so multiple comproc instances
+// can run independently.
+func SocketPath(configPath string) string {
 	// Allow override via COMPROC_SOCKET environment variable
 	if path := os.Getenv("COMPROC_SOCKET"); path != "" {
 		return path
 	}
+	hash := sha256.Sum256([]byte(configPath))
+	suffix := hex.EncodeToString(hash[:6]) // 12 hex chars
+	name := fmt.Sprintf("comproc-%s.sock", suffix)
 	// Use XDG_RUNTIME_DIR if available, otherwise fall back to tmp
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-		return filepath.Join(dir, "comproc.sock")
+		return filepath.Join(dir, name)
 	}
-	return filepath.Join(os.TempDir(), fmt.Sprintf("comproc-%d.sock", os.Getuid()))
+	return filepath.Join(os.TempDir(), name)
 }
 
 // Run starts the daemon and blocks until it's shut down.
