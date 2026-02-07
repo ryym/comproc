@@ -106,6 +106,20 @@ func (c *Client) Up(services []string) (*protocol.UpResult, error) {
 	return &result, nil
 }
 
+// Shutdown shuts down the daemon, stopping all services.
+func (c *Client) Shutdown() (*protocol.ShutdownResult, error) {
+	resp, err := c.Call(protocol.MethodShutdown, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result protocol.ShutdownResult
+	if err := resp.ParseResult(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // Down stops services.
 func (c *Client) Down(services []string) (*protocol.DownResult, error) {
 	params := protocol.DownParams{Services: services}

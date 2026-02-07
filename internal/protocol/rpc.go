@@ -119,12 +119,13 @@ func NewErrorResponse(code int, message string, id *int) *Response {
 
 // Method names
 const (
-	MethodUp      = "up"
-	MethodDown    = "down"
-	MethodStatus  = "status"
-	MethodRestart = "restart"
-	MethodLogs    = "logs"
-	MethodLog     = "log" // Server-sent log notification
+	MethodUp       = "up"
+	MethodDown     = "down"
+	MethodShutdown = "shutdown"
+	MethodStatus   = "status"
+	MethodRestart  = "restart"
+	MethodLogs     = "logs"
+	MethodLog      = "log" // Server-sent log notification
 )
 
 // UpParams represents parameters for the "up" method.
@@ -179,6 +180,11 @@ type DownResult struct {
 type RestartResult struct {
 	Restarted []string `json:"restarted,omitempty"`
 	Failed    []string `json:"failed,omitempty"`
+}
+
+// ShutdownResult represents the result of a "shutdown" request.
+type ShutdownResult struct {
+	Stopped []string `json:"stopped,omitempty"`
 }
 
 // LogEntry represents a single log entry sent as a notification.

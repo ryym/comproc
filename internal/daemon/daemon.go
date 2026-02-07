@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/ryym/comproc/internal/config"
 	"github.com/ryym/comproc/internal/process"
@@ -88,6 +89,17 @@ func (d *Daemon) Run(socketPath string) error {
 func (d *Daemon) Shutdown() error {
 	d.cancel()
 	return d.StopAll()
+}
+
+// ShutdownAsync stops all services synchronously, then schedules daemon
+// context cancellation asynchronously so the RPC response can be sent first.
+func (d *Daemon) ShutdownAsync() []string {
+	stopped := d.StopServices(nil)
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		d.cancel()
+	}()
+	return stopped
 }
 
 // StartServices starts the specified services (or all if none specified).

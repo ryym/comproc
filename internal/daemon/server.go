@@ -136,6 +136,8 @@ func (s *Server) handleRequest(ctx context.Context, conn net.Conn, req *protocol
 		return s.handleUp(req)
 	case protocol.MethodDown:
 		return s.handleDown(req)
+	case protocol.MethodShutdown:
+		return s.handleShutdown(req)
 	case protocol.MethodStatus:
 		return s.handleStatus(req)
 	case protocol.MethodRestart:
@@ -158,6 +160,20 @@ func (s *Server) handleUp(req *protocol.Request) *protocol.Response {
 	result := protocol.UpResult{
 		Started: started,
 		Failed:  failed,
+	}
+
+	resp, err := protocol.NewResponse(result, *req.ID)
+	if err != nil {
+		return protocol.NewErrorResponse(protocol.InternalError, err.Error(), req.ID)
+	}
+	return resp
+}
+
+func (s *Server) handleShutdown(req *protocol.Request) *protocol.Response {
+	stopped := s.daemon.ShutdownAsync()
+
+	result := protocol.ShutdownResult{
+		Stopped: stopped,
 	}
 
 	resp, err := protocol.NewResponse(result, *req.ID)
