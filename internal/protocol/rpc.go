@@ -125,7 +125,9 @@ const (
 	MethodStatus   = "status"
 	MethodRestart  = "restart"
 	MethodLogs     = "logs"
-	MethodLog      = "log" // Server-sent log notification
+	MethodLog      = "log"   // Server-sent log notification
+	MethodAttach   = "attach"
+	MethodStdin    = "stdin" // Client-sent stdin data notification
 )
 
 // UpParams represents parameters for the "up" method.
@@ -193,6 +195,21 @@ type LogEntry struct {
 	Line      string `json:"line"`
 	Timestamp string `json:"timestamp"`
 	Stream    string `json:"stream"` // "stdout" or "stderr"
+}
+
+// AttachParams represents parameters for the "attach" method.
+type AttachParams struct {
+	Service string `json:"service"`
+}
+
+// AttachResult represents the result of an "attach" request.
+type AttachResult struct {
+	Lines []LogEntry `json:"lines"`
+}
+
+// StdinData represents stdin data sent from client to daemon.
+type StdinData struct {
+	Data string `json:"data"`
 }
 
 // ParseParams unmarshals request params into the given struct.

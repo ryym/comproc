@@ -122,7 +122,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			continue
 		}
 
-		resp := s.handleRequest(ctx, conn, &req)
+		resp := s.handleRequest(ctx, conn, reader, &req)
 		if resp != nil {
 			encoder.Encode(resp)
 		}
@@ -130,7 +130,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 }
 
 // handleRequest processes a single RPC request.
-func (s *Server) handleRequest(ctx context.Context, conn net.Conn, req *protocol.Request) *protocol.Response {
+func (s *Server) handleRequest(ctx context.Context, conn net.Conn, reader *bufio.Reader, req *protocol.Request) *protocol.Response {
 	switch req.Method {
 	case protocol.MethodUp:
 		return s.handleUp(req)
@@ -144,6 +144,8 @@ func (s *Server) handleRequest(ctx context.Context, conn net.Conn, req *protocol
 		return s.handleRestart(req)
 	case protocol.MethodLogs:
 		return s.handleLogs(ctx, conn, req)
+	case protocol.MethodAttach:
+		return s.handleAttach(ctx, conn, reader, req)
 	default:
 		return protocol.NewErrorResponse(protocol.MethodNotFound, "method not found", req.ID)
 	}
@@ -315,4 +317,89 @@ func (s *Server) handleLogs(ctx context.Context, conn net.Conn, req *protocol.Re
 	}
 
 	return resp
+}
+
+func (s *Server) handleAttach(ctx context.Context, conn net.Conn, reader *bufio.Reader, req *protocol.Request) *protocol.Response {
+	var params protocol.AttachParams
+	if err := req.ParseParams(&params); err != nil {
+		return protocol.NewErrorResponse(protocol.InvalidParams, err.Error(), req.ID)
+	}
+
+	if params.Service == "" {
+		return protocol.NewErrorResponse(protocol.InvalidParams, "service name is required", req.ID)
+	}
+
+	// Get recent logs for the service
+	logs := s.daemon.GetLogs([]string{params.Service}, 100)
+
+	result := protocol.AttachResult{
+		Lines: make([]protocol.LogEntry, 0, len(logs)),
+	}
+	for _, l := range logs {
+		result.Lines = append(result.Lines, protocol.LogEntry{
+			Service:   l.Service,
+			Line:      l.Line,
+			Timestamp: l.Timestamp.Format(time.RFC3339),
+			Stream:    l.Stream,
+		})
+	}
+
+	resp, err := protocol.NewResponse(result, *req.ID)
+	if err != nil {
+		return protocol.NewErrorResponse(protocol.InternalError, err.Error(), req.ID)
+	}
+
+	encoder := json.NewEncoder(conn)
+	encoder.Encode(resp)
+
+	// Subscribe to log updates for the service
+	ch := s.daemon.SubscribeLogs([]string{params.Service})
+	defer s.daemon.UnsubscribeLogs(ch)
+
+	// Read stdin data from client in a goroutine
+	stdinDone := make(chan struct{})
+	go func() {
+		defer close(stdinDone)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				return
+			}
+			var notification protocol.Request
+			if err := json.Unmarshal(line, &notification); err != nil {
+				continue
+			}
+			if notification.Method == protocol.MethodStdin {
+				var data protocol.StdinData
+				if err := notification.ParseParams(&data); err != nil {
+					continue
+				}
+				s.daemon.WriteStdin(params.Service, []byte(data.Data))
+			}
+		}
+	}()
+
+	// Stream log notifications to client
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-stdinDone:
+			return nil
+		case line, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			entry := protocol.LogEntry{
+				Service:   line.Service,
+				Line:      line.Line,
+				Timestamp: line.Timestamp.Format(time.RFC3339),
+				Stream:    line.Stream,
+			}
+			notification, _ := protocol.NewNotification(protocol.MethodLog, entry)
+			if err := encoder.Encode(notification); err != nil {
+				return nil
+			}
+		}
+	}
 }

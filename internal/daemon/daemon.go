@@ -255,6 +255,20 @@ func (d *Daemon) UnsubscribeLogs(ch <-chan LogLine) {
 	d.logMgr.Unsubscribe(ch)
 }
 
+// WriteStdin writes data to a service's stdin pipe.
+func (d *Daemon) WriteStdin(service string, data []byte) error {
+	d.mu.RLock()
+	proc, ok := d.processes[service]
+	d.mu.RUnlock()
+
+	if !ok {
+		return fmt.Errorf("service not found: %s", service)
+	}
+
+	_, err := proc.WriteStdin(data)
+	return err
+}
+
 // resolveDependencies returns services with their dependencies in startup order.
 func (d *Daemon) resolveDependencies(services []string) []string {
 	visited := make(map[string]bool)

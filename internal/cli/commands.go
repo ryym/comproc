@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/signal"
@@ -211,6 +212,77 @@ func streamLogs(client *Client, services []string, lines int, follow bool) error
 		client.Close()
 	}()
 
+	for {
+		notification, err := client.ReadNotification()
+		if err != nil {
+			return nil
+		}
+
+		if notification.Method == protocol.MethodLog {
+			var entry protocol.LogEntry
+			if err := notification.ParseParams(&entry); err == nil {
+				formatter.PrintLine(entry.Service, entry.Line)
+			}
+		}
+	}
+}
+
+// RunAttach executes the 'attach' command.
+func RunAttach(socketPath string, service string) error {
+	client := NewClient(socketPath)
+	if err := client.Connect(); err != nil {
+		return fmt.Errorf("daemon is not running")
+	}
+	defer client.Close()
+
+	// Get all service names for log formatting
+	status, err := client.Status()
+	if err != nil {
+		return fmt.Errorf("status failed: %w", err)
+	}
+	var serviceNames []string
+	for _, svc := range status.Services {
+		serviceNames = append(serviceNames, svc.Name)
+	}
+	formatter := NewLogFormatter(os.Stdout, serviceNames)
+
+	// Attach to the service
+	result, err := client.Attach(service)
+	if err != nil {
+		return fmt.Errorf("attach failed: %w", err)
+	}
+
+	// Display initial logs
+	for _, entry := range result.Lines {
+		formatter.PrintLine(entry.Service, entry.Line)
+	}
+
+	// Read stdin and send to daemon in a goroutine
+	stdinDone := make(chan struct{})
+	go func() {
+		defer close(stdinDone)
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			line := scanner.Text() + "\n"
+			if err := client.SendStdin(line); err != nil {
+				return
+			}
+		}
+	}()
+
+	// Handle Ctrl+C by closing the connection to detach
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		select {
+		case <-sigCh:
+			client.Close()
+		case <-stdinDone:
+			client.Close()
+		}
+	}()
+
+	// Read log notifications from daemon
 	for {
 		notification, err := client.ReadNotification()
 		if err != nil {

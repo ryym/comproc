@@ -187,3 +187,27 @@ func (c *Client) Logs(services []string, lines int, follow bool) (*LogsResult, e
 	}
 	return &result, nil
 }
+
+// Attach attaches to a service's stdin/stdout.
+func (c *Client) Attach(service string) (*protocol.AttachResult, error) {
+	params := protocol.AttachParams{Service: service}
+	resp, err := c.Call(protocol.MethodAttach, params)
+	if err != nil {
+		return nil, err
+	}
+
+	var result protocol.AttachResult
+	if err := resp.ParseResult(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// SendStdin sends stdin data to the daemon as a notification.
+func (c *Client) SendStdin(data string) error {
+	notification, err := protocol.NewNotification(protocol.MethodStdin, protocol.StdinData{Data: data})
+	if err != nil {
+		return err
+	}
+	return c.encoder.Encode(notification)
+}

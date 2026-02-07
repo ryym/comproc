@@ -60,6 +60,8 @@ func run() error {
 		return runRestart(socketPath, cmdArgs)
 	case "logs":
 		return runLogs(socketPath, cmdArgs)
+	case "attach":
+		return runAttach(socketPath, cmdArgs)
 	case "__daemon":
 		// Internal command for detached mode
 		return runDaemon(socketPath, absConfigPath, cmdArgs)
@@ -162,6 +164,13 @@ func runRestart(socketPath string, args []string) error {
 	return cli.RunRestart(socketPath, fs.Args())
 }
 
+func runAttach(socketPath string, args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("attach requires exactly one service name")
+	}
+	return cli.RunAttach(socketPath, args[0])
+}
+
 func runLogs(socketPath string, args []string) error {
 	fs := flag.NewFlagSet("logs", flag.ExitOnError)
 	follow := fs.Bool("f", false, "Follow log output")
@@ -195,6 +204,8 @@ Commands:
   logs [services...]    Show service logs
     -f                  Follow log output
     -n <lines>          Number of lines to show (default: 100)
+
+  attach <service>      Attach to a service (forward stdin, stream logs)
 
 Examples:
   comproc up                    Start all services

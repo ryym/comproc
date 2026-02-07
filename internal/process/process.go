@@ -37,8 +37,9 @@ type Process struct {
 	exitCode  int
 	restarts  int
 
-	stdout io.Writer
-	stderr io.Writer
+	stdout    io.Writer
+	stderr    io.Writer
+	stdinPipe io.WriteCloser
 
 	// done is closed when the process exits
 	done chan struct{}
@@ -100,6 +101,14 @@ func (p *Process) Start(ctx context.Context) error {
 	if p.stderr != nil {
 		cmd.Stderr = p.stderr
 	}
+
+	// Set up stdin pipe
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		p.State = StateFailed
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+	p.stdinPipe = stdinPipe
 
 	p.cmd = cmd
 
@@ -235,4 +244,14 @@ func (p *Process) PID() int {
 		return p.cmd.Process.Pid
 	}
 	return 0
+}
+
+// WriteStdin writes data to the process's stdin pipe.
+func (p *Process) WriteStdin(data []byte) (int, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.State != StateRunning || p.stdinPipe == nil {
+		return 0, fmt.Errorf("process is not running")
+	}
+	return p.stdinPipe.Write(data)
 }
