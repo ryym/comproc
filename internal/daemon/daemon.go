@@ -235,9 +235,7 @@ func (d *Daemon) GetStatus() []ServiceStatus {
 // GetLogs returns recent logs for the specified services.
 func (d *Daemon) GetLogs(services []string, lines int) []LogLine {
 	if len(services) == 0 {
-		for name := range d.processes {
-			services = append(services, name)
-		}
+		services = d.ServiceNames()
 	}
 
 	return d.logMgr.GetLines(services, lines)
@@ -246,9 +244,7 @@ func (d *Daemon) GetLogs(services []string, lines int) []LogLine {
 // SubscribeLogs subscribes to log updates.
 func (d *Daemon) SubscribeLogs(services []string) <-chan LogLine {
 	if len(services) == 0 {
-		for name := range d.processes {
-			services = append(services, name)
-		}
+		services = d.ServiceNames()
 	}
 
 	return d.logMgr.Subscribe(services)
