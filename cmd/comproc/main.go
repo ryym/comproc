@@ -27,6 +27,7 @@ func run() error {
 	var configPath string
 	flag.StringVar(&configPath, "f", defaultConfigFile, "Path to config file")
 	flag.StringVar(&configPath, "file", defaultConfigFile, "Path to config file")
+	flag.Usage = printUsage
 
 	// Parse to find the subcommand
 	flag.Parse()
