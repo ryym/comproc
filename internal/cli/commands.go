@@ -36,7 +36,55 @@ func RunUp(socketPath string, configPath string, services []string) error {
 		return fmt.Errorf("some services failed to start")
 	}
 
-	return nil
+	// Foreground mode: follow logs until interrupted
+	status, err := client.Status()
+	if err != nil {
+		return fmt.Errorf("status failed: %w", err)
+	}
+	var serviceNames []string
+	for _, svc := range status.Services {
+		serviceNames = append(serviceNames, svc.Name)
+	}
+	formatter := NewLogFormatter(os.Stdout, serviceNames)
+
+	logsResult, err := client.Logs(services, 100, true)
+	if err != nil {
+		return fmt.Errorf("logs failed: %w", err)
+	}
+
+	for _, entry := range logsResult.Lines {
+		printLogEntry(formatter, &entry)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		cancel()
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		notification, err := client.ReadNotification()
+		if err != nil {
+			return nil
+		}
+
+		if notification.Method == protocol.MethodLog {
+			var entry protocol.LogEntry
+			if err := notification.ParseParams(&entry); err == nil {
+				printLogEntry(formatter, &entry)
+			}
+		}
+	}
 }
 
 // RunDown executes the 'down' command.
