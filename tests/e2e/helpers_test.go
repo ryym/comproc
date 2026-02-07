@@ -44,7 +44,9 @@ func NewFixture(t *testing.T) *Fixture {
 	}
 
 	t.Cleanup(func() {
-		// Stop daemon if running
+		// Try graceful shutdown first
+		f.Run("down")
+		// Stop daemon process if still running
 		if f.daemonCmd != nil && f.daemonCmd.Process != nil {
 			f.daemonCmd.Process.Signal(os.Interrupt)
 			f.daemonCmd.Wait()
@@ -156,6 +158,20 @@ func (f *Fixture) WaitForSocket(timeout time.Duration) error {
 	return fmt.Errorf("timeout waiting for socket %s", f.SocketPath)
 }
 
+// WaitForSocketGone waits until the daemon socket is removed.
+func (f *Fixture) WaitForSocketGone(timeout time.Duration) error {
+	f.t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(f.SocketPath); os.IsNotExist(err) {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for socket %s to be removed", f.SocketPath)
+}
+
 // ServiceStatus represents parsed status of a single service.
 type ServiceStatus struct {
 	Name     string
@@ -260,13 +276,25 @@ func (f *Fixture) GetServiceStatus(service string) (*ServiceStatus, error) {
 	return nil, fmt.Errorf("service %s not found", service)
 }
 
-// Down stops the daemon.
+// Down stops all services and shuts down the daemon.
 func (f *Fixture) Down() (string, error) {
 	f.t.Helper()
 
 	stdout, stderr, err := f.Run("down")
 	if err != nil {
 		return "", fmt.Errorf("down failed: %v\nstderr: %s", err, stderr)
+	}
+	return stdout, nil
+}
+
+// Stop stops specific services without shutting down the daemon.
+func (f *Fixture) Stop(services ...string) (string, error) {
+	f.t.Helper()
+
+	args := append([]string{"stop"}, services...)
+	stdout, stderr, err := f.Run(args...)
+	if err != nil {
+		return "", fmt.Errorf("stop failed: %v\nstderr: %s", err, stderr)
 	}
 	return stdout, nil
 }

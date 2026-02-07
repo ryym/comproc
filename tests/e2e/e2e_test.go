@@ -91,7 +91,7 @@ services:
 		t.Fatalf("WaitForState failed: %v", err)
 	}
 
-	// Stop services
+	// Stop all services and shut down daemon
 	output, err := f.Down()
 	if err != nil {
 		t.Fatalf("Down failed: %v", err)
@@ -100,6 +100,12 @@ services:
 	stopped := ParseStoppedServices(output)
 	if !ContainsAll(stopped, []string{"app"}) {
 		t.Errorf("expected 'app' in stopped services, got: %v", stopped)
+	}
+
+	// Verify daemon shut down (socket gone)
+	err = f.WaitForSocketGone(5 * time.Second)
+	if err != nil {
+		t.Errorf("expected socket to be removed after down: %v", err)
 	}
 }
 
@@ -176,7 +182,7 @@ services:
 	}
 
 	// Stop db - api should also stop since it depends on db
-	stdout, _, _ := f.Run("down", "db")
+	stdout, _, _ := f.Run("stop", "db")
 
 	// api should be stopped because it depends on db
 	stopped := ParseStoppedServices(stdout)
@@ -571,7 +577,7 @@ services:
 		}
 	}
 
-	// Stop all (no arguments)
+	// Stop all and shut down daemon
 	output, err := f.Down()
 	if err != nil {
 		t.Fatalf("Down failed: %v", err)
@@ -580,5 +586,76 @@ services:
 	stopped := ParseStoppedServices(output)
 	if !ContainsAll(stopped, []string{"app1", "app2"}) {
 		t.Errorf("expected all services stopped, got: %v", stopped)
+	}
+
+	// Verify daemon shut down
+	err = f.WaitForSocketGone(5 * time.Second)
+	if err != nil {
+		t.Errorf("expected socket to be removed after down: %v", err)
+	}
+}
+
+func TestStop_SpecificService(t *testing.T) {
+	skipIfShort(t)
+
+	f := NewFixture(t)
+	config := `
+services:
+  app1:
+    command: sleep 60
+  app2:
+    command: sleep 60
+`
+	err := f.StartDaemon(config)
+	if err != nil {
+		t.Fatalf("StartDaemon failed: %v", err)
+	}
+
+	for _, svc := range []string{"app1", "app2"} {
+		err = f.WaitForState(svc, "running", 5*time.Second)
+		if err != nil {
+			t.Fatalf("WaitForState %s failed: %v", svc, err)
+		}
+	}
+
+	// Stop only app1
+	output, err := f.Stop("app1")
+	if err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+
+	stopped := ParseStoppedServices(output)
+	if !ContainsAll(stopped, []string{"app1"}) {
+		t.Errorf("expected app1 in stopped, got: %v", stopped)
+	}
+
+	// app2 should still be running
+	status, err := f.GetServiceStatus("app2")
+	if err != nil {
+		t.Fatalf("GetServiceStatus failed: %v", err)
+	}
+	if status.State != "running" {
+		t.Errorf("expected app2 to still be running, got: %s", status.State)
+	}
+
+	// Daemon should still be up (socket exists)
+	if err := f.WaitForSocket(1 * time.Second); err != nil {
+		t.Errorf("expected daemon to still be running after stop")
+	}
+}
+
+func TestDown_NoDaemon(t *testing.T) {
+	skipIfShort(t)
+
+	f := NewFixture(t)
+
+	// down with no daemon should succeed silently
+	stdout, _, err := f.Run("down")
+	if err != nil {
+		t.Errorf("expected down to succeed when no daemon, got error: %v", err)
+	}
+	// Should produce no output (or empty)
+	if strings.TrimSpace(stdout) != "" {
+		t.Errorf("expected empty output, got: %s", stdout)
 	}
 }

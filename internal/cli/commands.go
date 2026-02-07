@@ -87,18 +87,39 @@ func RunUp(socketPath string, configPath string, services []string) error {
 	}
 }
 
-// RunDown executes the 'down' command.
-func RunDown(socketPath string, services []string) error {
+// RunDown executes the 'down' command — stops all services and shuts down the daemon.
+func RunDown(socketPath string) error {
 	client := NewClient(socketPath)
 	if err := client.Connect(); err != nil {
-		fmt.Println("Daemon is not running")
+		// Daemon not running, nothing to do
+		return nil
+	}
+	defer client.Close()
+
+	result, err := client.Shutdown()
+	if err != nil {
+		return fmt.Errorf("down failed: %w", err)
+	}
+
+	if len(result.Stopped) > 0 {
+		fmt.Printf("Stopped: %v\n", result.Stopped)
+	}
+
+	return nil
+}
+
+// RunStop executes the 'stop' command — stops specified services without shutting down the daemon.
+func RunStop(socketPath string, services []string) error {
+	client := NewClient(socketPath)
+	if err := client.Connect(); err != nil {
+		fmt.Println("No services running")
 		return nil
 	}
 	defer client.Close()
 
 	result, err := client.Down(services)
 	if err != nil {
-		return fmt.Errorf("down failed: %w", err)
+		return fmt.Errorf("stop failed: %w", err)
 	}
 
 	if len(result.Stopped) > 0 {

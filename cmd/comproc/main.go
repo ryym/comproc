@@ -44,7 +44,9 @@ func run() error {
 	case "up":
 		return runUp(socketPath, configPath, cmdArgs)
 	case "down":
-		return runDown(socketPath, cmdArgs)
+		return cli.RunDown(socketPath)
+	case "stop":
+		return runStop(socketPath, cmdArgs)
 	case "status", "ps":
 		return cli.RunStatus(socketPath)
 	case "restart":
@@ -131,11 +133,11 @@ func runDaemon(socketPath, configPath string, services []string) error {
 	return cli.RunDaemon(socketPath, configPath, services)
 }
 
-func runDown(socketPath string, args []string) error {
-	fs := flag.NewFlagSet("down", flag.ExitOnError)
+func runStop(socketPath string, args []string) error {
+	fs := flag.NewFlagSet("stop", flag.ExitOnError)
 	fs.Parse(args)
 
-	return cli.RunDown(socketPath, fs.Args())
+	return cli.RunStop(socketPath, fs.Args())
 }
 
 func runRestart(socketPath string, args []string) error {
@@ -167,7 +169,9 @@ Commands:
   up [services...]      Start services
     -d                  Run in detached mode (background)
 
-  down [services...]    Stop services
+  down                  Stop all services and shut down
+
+  stop [services...]    Stop services (without shutting down)
 
   status, ps            Show service status
 
@@ -180,7 +184,8 @@ Commands:
 Examples:
   comproc up                    Start all services
   comproc up api db             Start specific services
-  comproc down                  Stop all services
+  comproc stop api              Stop specific services
+  comproc down                  Stop all services and shut down
   comproc status                Show status of all services
   comproc logs -f api           Follow logs for api service
   comproc restart api           Restart api service`)
