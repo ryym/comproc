@@ -355,6 +355,13 @@ func parseServiceList(output, prefix string) []string {
 	return strings.Fields(matches[1])
 }
 
+// stripANSI removes ANSI escape sequences from a string.
+var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string {
+	return ansiPattern.ReplaceAllString(s, "")
+}
+
 // ContainsAll checks if all expected items are present in actual.
 func ContainsAll(actual, expected []string) bool {
 	set := make(map[string]bool)

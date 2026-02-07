@@ -429,7 +429,8 @@ services:
 	// When filtering, we should only see app1's logs
 	lines := strings.Split(strings.TrimSpace(logs), "\n")
 	for _, line := range lines {
-		if line != "" && !strings.HasPrefix(line, "app1 |") {
+		plain := stripANSI(line)
+		if plain != "" && !strings.HasPrefix(plain, "app1") {
 			t.Errorf("expected only app1 logs, but got line: %s", line)
 		}
 	}
