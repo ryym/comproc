@@ -248,24 +248,16 @@ func RunLogs(socketPath string, services []string, lines int, follow bool) error
 	}
 
 	// Follow mode: read notifications
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	// Handle Ctrl+C
+	// Handle Ctrl+C by closing the connection to unblock ReadNotification.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		cancel()
+		client.Close()
 	}()
 
 	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
 		notification, err := client.ReadNotification()
 		if err != nil {
 			return nil
