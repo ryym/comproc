@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/ryym/comproc/internal/cli"
+	"github.com/ryym/comproc/internal/config"
 	"github.com/ryym/comproc/internal/daemon"
 )
 
@@ -86,7 +87,7 @@ func startDetached(configPath, socketPath string, services []string) error {
 	// Check if daemon is already running
 	client := cli.NewClient(socketPath)
 	if err := client.Connect(); err == nil {
-		client.Close()
+		defer client.Close()
 		// Daemon already running, just send up request
 		result, err := client.Up(services)
 		if err != nil {
@@ -96,6 +97,19 @@ func startDetached(configPath, socketPath string, services []string) error {
 			fmt.Printf("Started: %v\n", result.Started)
 		}
 		return nil
+	}
+
+	// Load config to resolve service names
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	targetServices := services
+	if len(targetServices) == 0 {
+		for name := range cfg.Services {
+			targetServices = append(targetServices, name)
+		}
 	}
 
 	// Start daemon process
@@ -119,6 +133,7 @@ func startDetached(configPath, socketPath string, services []string) error {
 	}
 
 	fmt.Printf("Started in background (PID: %d)\n", cmd.Process.Pid)
+	fmt.Printf("Services: %v\n", targetServices)
 
 	// Don't wait for the process - it runs in background
 	// Release the process so it doesn't become a zombie
