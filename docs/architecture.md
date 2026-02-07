@@ -7,7 +7,7 @@ comproc is a docker-compose-like CLI tool for managing multiple processes with a
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      CLI Client                         │
-│  (up, down, logs, status, restart)                      │
+│  (up, down, stop, logs, status, restart)                │
 └─────────────────────┬───────────────────────────────────┘
                       │ Unix Socket (JSON-RPC)
 ┌─────────────────────▼───────────────────────────────────┐
@@ -18,10 +18,10 @@ comproc is a docker-compose-like CLI tool for managing multiple processes with a
 │  └──────┬──────┘  └──────┬──────┘  └─────────────┘     │
 └─────────┼────────────────┼──────────────────────────────┘
           │                │
-    ┌─────▼─────┐    ┌─────▼─────┐
-    │ Process A │    │ Log Files │
-    │ Process B │    │ (per proc)│
-    │ Process C │    └───────────┘
+    ┌─────▼─────┐    ┌─────▼──────┐
+    │ Process A │    │ Ring Buffer│
+    │ Process B │    │ (per svc)  │
+    │ Process C │    └────────────┘
     └───────────┘
 ```
 
@@ -32,9 +32,10 @@ comproc is a docker-compose-like CLI tool for managing multiple processes with a
 The CLI client provides user-facing commands:
 
 - `comproc up [-d] [service...]` - Start services
-- `comproc down [service...]` - Stop services
-- `comproc logs [-f] [service...]` - View logs
-- `comproc status` - Show service status
+- `comproc down` - Stop all services and shut down the daemon
+- `comproc stop [service...]` - Stop services without shutting down the daemon
+- `comproc logs [-f] [-n lines] [service...]` - View logs
+- `comproc status` (alias: `ps`) - Show service status
 - `comproc restart [service...]` - Restart services
 
 ### Daemon
@@ -44,14 +45,14 @@ The daemon is responsible for:
 - Starting, stopping, and monitoring child processes
 - Controlling startup order based on dependencies
 - Detecting crashes and applying restart policies
-- Collecting and buffering logs
+- Collecting and buffering logs in per-service in-memory ring buffers
 - Processing requests from the CLI
 
 ### Communication
 
 CLI and daemon communicate via Unix socket using JSON-RPC 2.0 protocol.
 
-Socket path: `~/.comproc/comproc.sock` or `/tmp/comproc-{uid}/comproc.sock`
+Socket path is derived from the config file's absolute path (SHA-256 hash), allowing multiple independent instances. The path is `$XDG_RUNTIME_DIR/comproc-{hash}.sock` or `$TMPDIR/comproc-{hash}.sock` as a fallback. Can be overridden via `COMPROC_SOCKET` environment variable.
 
 ## Package Structure
 
