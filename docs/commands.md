@@ -33,31 +33,50 @@ comproc up
 # Start specific services
 comproc up api db
 
-# Start in background (not yet implemented)
+# Start in background
 comproc up -d
 ```
 
-When run without `-d`, the daemon runs in the foreground and can be stopped with Ctrl+C.
+When run without `-d`, comproc runs in the foreground and can be stopped with Ctrl+C.
 
 ### down
 
-Stop services.
+Stop all services and shut down.
 
 ```
-comproc down [service...]
+comproc down
 ```
+
+This command takes no arguments. It stops all running services and shuts down the background process.
+If no background process is running, the command succeeds silently.
 
 **Examples:**
 
 ```bash
-# Stop all services
+# Stop everything and shut down
 comproc down
+```
 
-# Stop specific services
-comproc down api
+### stop
+
+Stop specific services without shutting down.
+
+```
+comproc stop [service...]
 ```
 
 When stopping a service, its dependents are also stopped automatically.
+The background process remains running so other services can continue.
+
+**Examples:**
+
+```bash
+# Stop all services (background process stays)
+comproc stop
+
+# Stop specific services
+comproc stop api
+```
 
 ### status (or ps)
 

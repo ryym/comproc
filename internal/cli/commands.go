@@ -218,7 +218,6 @@ func RunRestart(socketPath string, services []string) error {
 func RunLogs(socketPath string, services []string, lines int, follow bool) error {
 	client := NewClient(socketPath)
 	if err := client.Connect(); err != nil {
-		fmt.Println("No logs available")
 		return nil
 	}
 	defer client.Close()

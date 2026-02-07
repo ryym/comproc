@@ -710,7 +710,7 @@ func TestLogs_NoDaemon(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected logs to succeed when no daemon, got error: %v", err)
 	}
-	if !strings.Contains(stdout, "No logs available") {
-		t.Errorf("expected 'No logs available', got: %s", stdout)
+	if strings.TrimSpace(stdout) != "" {
+		t.Errorf("expected empty output, got: %s", stdout)
 	}
 }
