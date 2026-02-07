@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -38,54 +37,7 @@ func RunUp(socketPath string, configPath string, services []string) error {
 	}
 
 	// Foreground mode: follow logs until interrupted
-	status, err := client.Status()
-	if err != nil {
-		return fmt.Errorf("status failed: %w", err)
-	}
-	var serviceNames []string
-	for _, svc := range status.Services {
-		serviceNames = append(serviceNames, svc.Name)
-	}
-	formatter := NewLogFormatter(os.Stdout, serviceNames)
-
-	logsResult, err := client.Logs(services, 100, true)
-	if err != nil {
-		return fmt.Errorf("logs failed: %w", err)
-	}
-
-	for _, entry := range logsResult.Lines {
-		printLogEntry(formatter, &entry)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		cancel()
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
-		notification, err := client.ReadNotification()
-		if err != nil {
-			return nil
-		}
-
-		if notification.Method == protocol.MethodLog {
-			var entry protocol.LogEntry
-			if err := notification.ParseParams(&entry); err == nil {
-				printLogEntry(formatter, &entry)
-			}
-		}
-	}
+	return streamLogs(client, services, 100, true)
 }
 
 // RunDown executes the 'down' command — stops all services and shuts down the daemon.
@@ -222,6 +174,11 @@ func RunLogs(socketPath string, services []string, lines int, follow bool) error
 	}
 	defer client.Close()
 
+	return streamLogs(client, services, lines, follow)
+}
+
+// streamLogs fetches and displays logs, optionally following new output until interrupted.
+func streamLogs(client *Client, services []string, lines int, follow bool) error {
 	// Get all service names for proper alignment
 	status, err := client.Status()
 	if err != nil {
@@ -238,16 +195,13 @@ func RunLogs(socketPath string, services []string, lines int, follow bool) error
 		return fmt.Errorf("logs failed: %w", err)
 	}
 
-	// Print initial logs
 	for _, entry := range result.Lines {
-		printLogEntry(formatter, &entry)
+		formatter.PrintLine(entry.Service, entry.Line)
 	}
 
 	if !follow {
 		return nil
 	}
-
-	// Follow mode: read notifications
 
 	// Handle Ctrl+C by closing the connection to unblock ReadNotification.
 	sigCh := make(chan os.Signal, 1)
@@ -266,14 +220,10 @@ func RunLogs(socketPath string, services []string, lines int, follow bool) error
 		if notification.Method == protocol.MethodLog {
 			var entry protocol.LogEntry
 			if err := notification.ParseParams(&entry); err == nil {
-				printLogEntry(formatter, &entry)
+				formatter.PrintLine(entry.Service, entry.Line)
 			}
 		}
 	}
-}
-
-func printLogEntry(formatter *LogFormatter, entry *protocol.LogEntry) {
-	formatter.PrintLine(entry.Service, entry.Line)
 }
 
 // runDaemonForeground runs the daemon in the foreground and starts services.
