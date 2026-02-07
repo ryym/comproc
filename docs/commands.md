@@ -12,7 +12,7 @@ comproc provides a set of commands for managing services.
 
 ### up
 
-Start services.
+Start services. The daemon is started in the background automatically.
 
 ```
 comproc up [options] [service...]
@@ -20,24 +20,27 @@ comproc up [options] [service...]
 
 **Options:**
 
-| Option | Description                       |
-| ------ | --------------------------------- |
-| `-d`   | Run in detached mode (background) |
+| Option | Description                      |
+| ------ | -------------------------------- |
+| `-f`   | Follow log output after starting |
 
 **Examples:**
 
 ```bash
-# Start all services in foreground
+# Start all services
 comproc up
 
 # Start specific services
 comproc up api db
 
-# Start in background
-comproc up -d
+# Start all services and follow logs
+comproc up -f
+
+# Start specific services and follow logs
+comproc up -f api db
 ```
 
-When run without `-d`, comproc runs in the foreground and can be stopped with Ctrl+C.
+When using `-f`, log output is streamed until interrupted with Ctrl+C. The daemon continues running in the background after disconnecting.
 
 ### down
 

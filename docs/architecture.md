@@ -31,7 +31,7 @@ comproc is a docker-compose-like CLI tool for managing multiple processes with a
 
 The CLI client provides user-facing commands:
 
-- `comproc up [-d] [service...]` - Start services
+- `comproc up [-f] [service...]` - Start services (daemon runs in background)
 - `comproc down` - Stop all services and shut down the daemon
 - `comproc stop [service...]` - Stop services without shutting down the daemon
 - `comproc logs [-f] [-n lines] [service...]` - View logs

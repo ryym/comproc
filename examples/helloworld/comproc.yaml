@@ -1,11 +1,10 @@
 # comproc demo configuration
 # Usage:
 #   comproc up      # Start all services
+#   comproc up -f   # Start all services and follow logs
 #   comproc status  # Check status
 #   comproc logs -f # Follow logs
-#   comproc down    # Stop all
-#
-# Press Ctrl+C to exit
+#   comproc down    # Stop all services
 
 services:
   # Database (starts first)
