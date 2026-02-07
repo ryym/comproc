@@ -15,12 +15,18 @@ type LogLine struct {
 	Stream    string // "stdout" or "stderr"
 }
 
+// subscriber represents a log subscription with an optional service filter.
+type subscriber struct {
+	ch       chan LogLine
+	services map[string]bool // nil means all services
+}
+
 // LogManager manages log collection and distribution.
 type LogManager struct {
 	mu          sync.RWMutex
 	buffers     map[string]*RingBuffer
 	bufferSize  int
-	subscribers map[<-chan LogLine]chan LogLine
+	subscribers map[<-chan LogLine]*subscriber
 }
 
 // NewLogManager creates a new log manager.
@@ -28,7 +34,7 @@ func NewLogManager(bufferSize int) *LogManager {
 	return &LogManager{
 		buffers:     make(map[string]*RingBuffer),
 		bufferSize:  bufferSize,
-		subscribers: make(map[<-chan LogLine]chan LogLine),
+		subscribers: make(map[<-chan LogLine]*subscriber),
 	}
 }
 
@@ -63,14 +69,23 @@ func (m *LogManager) GetLines(services []string, count int) []LogLine {
 }
 
 // Subscribe returns a channel that receives new log lines.
+// If services is non-empty, only lines from those services are sent.
 func (m *LogManager) Subscribe(services []string) <-chan LogLine {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	ch := make(chan LogLine, 100)
-	m.subscribers[ch] = ch
+	sub := &subscriber{
+		ch: make(chan LogLine, 100),
+	}
+	if len(services) > 0 {
+		sub.services = make(map[string]bool, len(services))
+		for _, s := range services {
+			sub.services[s] = true
+		}
+	}
+	m.subscribers[sub.ch] = sub
 
-	return ch
+	return sub.ch
 }
 
 // Unsubscribe removes a subscription.
@@ -78,8 +93,8 @@ func (m *LogManager) Unsubscribe(ch <-chan LogLine) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if writeCh, ok := m.subscribers[ch]; ok {
-		close(writeCh)
+	if sub, ok := m.subscribers[ch]; ok {
+		close(sub.ch)
 		delete(m.subscribers, ch)
 	}
 }
@@ -98,9 +113,12 @@ func (m *LogManager) addLine(line LogLine) {
 	buf.Add(line)
 
 	// Notify subscribers (non-blocking)
-	for _, ch := range m.subscribers {
+	for _, sub := range m.subscribers {
+		if sub.services != nil && !sub.services[line.Service] {
+			continue
+		}
 		select {
-		case ch <- line:
+		case sub.ch <- line:
 		default:
 			// Channel full, skip
 		}

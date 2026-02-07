@@ -144,6 +144,68 @@ func TestLogManager_Subscribe(t *testing.T) {
 	mgr.Unsubscribe(ch)
 }
 
+func TestLogManager_SubscribeFiltersByService(t *testing.T) {
+	mgr := NewLogManager(10)
+
+	ch := mgr.Subscribe([]string{"api"})
+
+	go func() {
+		apiWriter := mgr.Writer("api")
+		dbWriter := mgr.Writer("db")
+		dbWriter.Write([]byte("db log\n"))
+		apiWriter.Write([]byte("api log\n"))
+	}()
+
+	select {
+	case line := <-ch:
+		if line.Service != "api" {
+			t.Errorf("expected service 'api', got %q", line.Service)
+		}
+		if line.Line != "api log" {
+			t.Errorf("expected 'api log', got %q", line.Line)
+		}
+	case <-time.After(time.Second):
+		t.Error("timeout waiting for log")
+	}
+
+	// Ensure no db log was received
+	select {
+	case line := <-ch:
+		t.Errorf("unexpected log from service %q: %q", line.Service, line.Line)
+	case <-time.After(50 * time.Millisecond):
+		// Expected: no more messages
+	}
+
+	mgr.Unsubscribe(ch)
+}
+
+func TestLogManager_SubscribeAll(t *testing.T) {
+	mgr := NewLogManager(10)
+
+	ch := mgr.Subscribe(nil)
+
+	go func() {
+		mgr.Writer("api").Write([]byte("api log\n"))
+		mgr.Writer("db").Write([]byte("db log\n"))
+	}()
+
+	received := map[string]bool{}
+	for i := 0; i < 2; i++ {
+		select {
+		case line := <-ch:
+			received[line.Service] = true
+		case <-time.After(time.Second):
+			t.Fatal("timeout waiting for log")
+		}
+	}
+
+	if !received["api"] || !received["db"] {
+		t.Errorf("expected logs from both services, got %v", received)
+	}
+
+	mgr.Unsubscribe(ch)
+}
+
 func TestLogManager_GetLinesLimit(t *testing.T) {
 	mgr := NewLogManager(10)
 	writer := mgr.Writer("api")
