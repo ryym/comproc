@@ -13,34 +13,6 @@ import (
 	"github.com/ryym/comproc/internal/protocol"
 )
 
-// RunUp executes the 'up' command (foreground mode).
-func RunUp(socketPath string, configPath string, services []string) error {
-	// Check if daemon is running
-	client := NewClient(socketPath)
-	if err := client.Connect(); err != nil {
-		// Daemon not running, start it in foreground
-		return runDaemonForeground(configPath, socketPath, services)
-	}
-	defer client.Close()
-
-	// Daemon is running, send up request
-	result, err := client.Up(services)
-	if err != nil {
-		return fmt.Errorf("up failed: %w", err)
-	}
-
-	if len(result.Started) > 0 {
-		fmt.Printf("Started: %v\n", result.Started)
-	}
-	if len(result.Failed) > 0 {
-		fmt.Printf("Failed: %v\n", result.Failed)
-		return fmt.Errorf("some services failed to start")
-	}
-
-	// Foreground mode: follow logs until interrupted
-	return streamLogs(client, services, 100, true)
-}
-
 // RunDown executes the 'down' command — stops all services and shuts down the daemon.
 func RunDown(socketPath string) error {
 	client := NewClient(socketPath)
@@ -298,56 +270,12 @@ func RunAttach(socketPath string, service string) error {
 	}
 }
 
-// runDaemonForeground runs the daemon in the foreground and starts services.
-func runDaemonForeground(configPath string, socketPath string, services []string) error {
+// RunDaemon runs the daemon process.
+func RunDaemon(socketPath, configPath string) error {
 	d, err := daemon.New(configPath)
 	if err != nil {
 		return err
 	}
-
-	// Create formatter with all service names
-	formatter := NewLogFormatter(os.Stdout, d.ServiceNames())
-
-	// Subscribe to logs before starting services
-	logCh := d.SubscribeLogs(nil)
-	go func() {
-		for line := range logCh {
-			formatter.PrintLine(line.Service, line.Line)
-		}
-	}()
-
-	// Start services
-	started, failed := d.StartServices(services)
-	if len(started) > 0 {
-		fmt.Printf("Started: %v\n", started)
-	}
-	if len(failed) > 0 {
-		fmt.Printf("Failed to start: %v\n", failed)
-	}
-
-	// Handle shutdown signals
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-sigCh
-		fmt.Println("\nShutting down...")
-		d.Shutdown()
-	}()
-
-	// Run the daemon (this blocks)
-	return d.Run(socketPath)
-}
-
-// RunDaemon runs the daemon (used by detached mode).
-func RunDaemon(socketPath, configPath string, services []string) error {
-	d, err := daemon.New(configPath)
-	if err != nil {
-		return err
-	}
-
-	// Start services
-	d.StartServices(services)
 
 	// Handle shutdown signals
 	sigCh := make(chan os.Signal, 1)

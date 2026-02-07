@@ -93,14 +93,14 @@ func (f *Fixture) RunWithTimeout(timeout time.Duration, args ...string) (stdout,
 	return outBuf.String(), errBuf.String(), err
 }
 
-// StartDaemon starts the daemon in detached mode and waits for it to be ready.
+// StartDaemon starts the daemon in background and waits for it to be ready.
 func (f *Fixture) StartDaemon(config string) error {
 	f.t.Helper()
 
 	f.WriteConfig(config)
 
-	// Start daemon with up -d
-	stdout, stderr, err := f.RunWithTimeout(10*time.Second, "-f", f.ConfigPath, "up", "-d")
+	// Start daemon with up (always runs in background)
+	stdout, stderr, err := f.RunWithTimeout(10*time.Second, "-f", f.ConfigPath, "up")
 	if err != nil {
 		return fmt.Errorf("failed to start daemon: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
 	}
@@ -113,13 +113,14 @@ func (f *Fixture) StartDaemon(config string) error {
 	return nil
 }
 
-// StartDaemonForeground starts the daemon in foreground mode (non-blocking).
-func (f *Fixture) StartDaemonForeground(config string) (*exec.Cmd, *SyncBuffer, error) {
+// StartDaemonWithLogs starts services with log following (non-blocking).
+// The returned command runs `up -f` in the background, streaming logs to outBuf.
+func (f *Fixture) StartDaemonWithLogs(config string) (*exec.Cmd, *SyncBuffer, error) {
 	f.t.Helper()
 
 	f.WriteConfig(config)
 
-	cmd := exec.Command(binPath, "-f", f.ConfigPath, "up")
+	cmd := exec.Command(binPath, "-f", f.ConfigPath, "up", "-f")
 	cmd.Env = append(os.Environ(), "COMPROC_SOCKET="+f.SocketPath)
 
 	outBuf := &SyncBuffer{}

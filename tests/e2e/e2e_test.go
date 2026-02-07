@@ -15,7 +15,7 @@ func skipIfShort(t *testing.T) {
 
 // --- Basic Lifecycle Tests ---
 
-func TestUp_Detached(t *testing.T) {
+func TestUp(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
@@ -44,7 +44,7 @@ services:
 	}
 }
 
-func TestUp_Foreground(t *testing.T) {
+func TestUp_FollowLogs(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
@@ -53,9 +53,9 @@ services:
   app:
     command: sh -c 'echo "hello from app"; sleep 60'
 `
-	cmd, outBuf, err := f.StartDaemonForeground(config)
+	cmd, outBuf, err := f.StartDaemonWithLogs(config)
 	if err != nil {
-		t.Fatalf("StartDaemonForeground failed: %v", err)
+		t.Fatalf("StartDaemonWithLogs failed: %v", err)
 	}
 
 	// Wait a bit for log output
@@ -66,9 +66,15 @@ services:
 		t.Errorf("expected 'Started:' in output, got: %s", output)
 	}
 
-	// Stop daemon
+	// Send SIGINT to the up -f process (should NOT stop daemon)
 	cmd.Process.Signal(os.Interrupt)
 	cmd.Wait()
+
+	// Daemon should still be running
+	err = f.WaitForState("app", "running", 5*time.Second)
+	if err != nil {
+		t.Errorf("expected daemon to still be running after Ctrl+C on up -f: %v", err)
+	}
 }
 
 func TestDown(t *testing.T) {
@@ -128,9 +134,9 @@ services:
     depends_on:
       - api
 `
-	cmd, outBuf, err := f.StartDaemonForeground(config)
+	cmd, outBuf, err := f.StartDaemonWithLogs(config)
 	if err != nil {
-		t.Fatalf("StartDaemonForeground failed: %v", err)
+		t.Fatalf("StartDaemonWithLogs failed: %v", err)
 	}
 
 	// Wait for all services to start
@@ -138,6 +144,9 @@ services:
 	if err != nil {
 		t.Fatalf("WaitForState frontend failed: %v", err)
 	}
+
+	// Give time for log output to arrive via log following
+	time.Sleep(500 * time.Millisecond)
 
 	output := outBuf.String()
 
@@ -505,7 +514,7 @@ services:
 `
 	f.WriteConfig(config)
 
-	// Use foreground mode to catch config errors immediately
+	// Config errors are caught before spawning the daemon
 	_, stderr, err := f.RunWithTimeout(5*time.Second, "-f", f.ConfigPath, "up")
 
 	if err == nil {
@@ -533,7 +542,7 @@ services:
 `
 	f.WriteConfig(config)
 
-	// Use foreground mode to catch config errors immediately
+	// Config errors are caught before spawning the daemon
 	_, stderr, err := f.RunWithTimeout(5*time.Second, "-f", f.ConfigPath, "up")
 
 	if err == nil {

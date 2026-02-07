@@ -4,9 +4,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/ryym/comproc/internal/cli"
 	"github.com/ryym/comproc/internal/config"
@@ -63,8 +65,8 @@ func run() error {
 	case "attach":
 		return runAttach(socketPath, cmdArgs)
 	case "__daemon":
-		// Internal command for detached mode
-		return runDaemon(socketPath, absConfigPath, cmdArgs)
+		// Internal command: runs the daemon process
+		return runDaemon(socketPath, absConfigPath)
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
@@ -75,44 +77,57 @@ func run() error {
 
 func runUp(socketPath, configPath string, args []string) error {
 	fs := flag.NewFlagSet("up", flag.ExitOnError)
-	detach := fs.Bool("d", false, "Run in detached mode (background)")
+	follow := fs.Bool("f", false, "Follow log output after starting")
 	fs.Parse(args)
 
-	if *detach {
-		return startDetached(configPath, socketPath, fs.Args())
+	services := fs.Args()
+
+	// Ensure daemon is running (spawn if needed, wait for socket)
+	if err := ensureDaemon(configPath, socketPath); err != nil {
+		return err
 	}
 
-	return cli.RunUp(socketPath, configPath, fs.Args())
+	// Connect and send Up RPC
+	client := cli.NewClient(socketPath)
+	if err := client.Connect(); err != nil {
+		return fmt.Errorf("failed to connect to daemon: %w", err)
+	}
+	defer client.Close()
+
+	result, err := client.Up(services)
+	if err != nil {
+		return fmt.Errorf("up failed: %w", err)
+	}
+
+	if len(result.Started) > 0 {
+		fmt.Printf("Started: %v\n", result.Started)
+	}
+	if len(result.Failed) > 0 {
+		fmt.Printf("Failed: %v\n", result.Failed)
+		return fmt.Errorf("some services failed to start")
+	}
+
+	if *follow {
+		return cli.RunLogs(socketPath, services, 100, true)
+	}
+
+	return nil
 }
 
-// startDetached starts the daemon in a background process.
-func startDetached(configPath, socketPath string, services []string) error {
+// ensureDaemon ensures a daemon process is running and its socket is ready.
+// If no daemon is running, it validates the config, spawns a background
+// daemon process, and waits for the socket to become available.
+func ensureDaemon(configPath, socketPath string) error {
 	// Check if daemon is already running
-	client := cli.NewClient(socketPath)
-	if err := client.Connect(); err == nil {
-		defer client.Close()
-		// Daemon already running, just send up request
-		result, err := client.Up(services)
-		if err != nil {
-			return err
-		}
-		if len(result.Started) > 0 {
-			fmt.Printf("Started: %v\n", result.Started)
-		}
+	conn, err := net.DialTimeout("unix", socketPath, 100*time.Millisecond)
+	if err == nil {
+		conn.Close()
 		return nil
 	}
 
-	// Load config to resolve service names
-	cfg, err := config.Load(configPath)
-	if err != nil {
+	// Validate config before spawning to catch errors immediately
+	if _, err := config.Load(configPath); err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	targetServices := services
-	if len(targetServices) == 0 {
-		for name := range cfg.Services {
-			targetServices = append(targetServices, name)
-		}
 	}
 
 	// Start daemon process
@@ -121,33 +136,35 @@ func startDetached(configPath, socketPath string, services []string) error {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	// Build arguments for daemon process
-	daemonArgs := []string{"-f", configPath, "__daemon"}
-	daemonArgs = append(daemonArgs, services...)
-
-	cmd := exec.Command(exe, daemonArgs...)
+	cmd := exec.Command(exe, "-f", configPath, "__daemon")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Stdin = nil
 
-	// Detach from parent process
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start daemon: %w", err)
 	}
 
-	fmt.Printf("Started in background (PID: %d)\n", cmd.Process.Pid)
-	fmt.Printf("Services: %v\n", targetServices)
-
 	// Don't wait for the process - it runs in background
-	// Release the process so it doesn't become a zombie
 	cmd.Process.Release()
 
-	return nil
+	// Wait for socket to be ready
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("unix", socketPath, 100*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	return fmt.Errorf("timeout waiting for daemon to start")
 }
 
 // runDaemon runs as the background daemon process.
-func runDaemon(socketPath, configPath string, services []string) error {
-	return cli.RunDaemon(socketPath, configPath, services)
+func runDaemon(socketPath, configPath string) error {
+	return cli.RunDaemon(socketPath, configPath)
 }
 
 func runStop(socketPath string, args []string) error {
@@ -190,8 +207,8 @@ Options:
   -f, --file <path>   Path to config file (default: comproc.yaml)
 
 Commands:
-  up [services...]      Start services
-    -d                  Run in detached mode (background)
+  up [services...]      Start services (daemon runs in background)
+    -f                  Follow log output after starting
 
   down                  Stop all services and shut down
 
@@ -210,6 +227,7 @@ Commands:
 Examples:
   comproc up                    Start all services
   comproc up api db             Start specific services
+  comproc up -f                 Start all services and follow logs
   comproc stop api              Stop specific services
   comproc down                  Stop all services and shut down
   comproc status                Show status of all services
