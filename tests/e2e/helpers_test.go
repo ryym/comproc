@@ -87,7 +87,7 @@ func (f *Fixture) Run(args ...string) (stdout, stderr string, err error) {
 }
 
 // RunAsync starts `comproc [-f <configPath>] <args...>` without waiting for completion.
-// The command runs in its own process group so InterruptAndWait can simulate Ctrl+C.
+// The command runs in its own process group so InterruptAndWait can simulate Ctrl-C.
 // Returns the running command and a thread-safe output buffer.
 func (f *Fixture) RunAsync(args ...string) (*exec.Cmd, *SyncBuffer, error) {
 	f.t.Helper()
@@ -117,7 +117,7 @@ func (f *Fixture) buildArgs(args ...string) []string {
 	return args
 }
 
-// InterruptAndWait simulates Ctrl+C by sending SIGINT to the process group
+// InterruptAndWait simulates Ctrl-C by sending SIGINT to the process group
 // of the given command, then waits for it to exit. This requires the command
 // to have been started with SysProcAttr.Setpgid = true.
 func InterruptAndWait(cmd *exec.Cmd) error {

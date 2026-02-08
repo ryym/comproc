@@ -31,7 +31,7 @@ EOF
 # Check what's running
 ./comproc ps
 
-# Stream logs (Ctrl+C to detach — processes keep running)
+# Stream logs (Ctrl-C to detach — processes keep running)
 ./comproc logs -f
 
 # Stop all processes

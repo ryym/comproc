@@ -40,7 +40,7 @@ comproc up -f
 comproc up -f api db
 ```
 
-When using `-f`, log output is streamed until interrupted with Ctrl+C. The daemon continues running in the background after disconnecting.
+When using `-f`, log output is streamed until interrupted with Ctrl-C. The daemon continues running in the background after disconnecting.
 
 ### down
 

@@ -217,7 +217,7 @@ services:
 	}
 }
 
-// 1.7: `up -f` streams logs; Ctrl+C disconnects but daemon keeps running.
+// 1.7: `up -f` streams logs; Ctrl-C disconnects but daemon keeps running.
 func TestUp_FollowLogs(t *testing.T) {
 	skipIfShort(t)
 
@@ -244,12 +244,12 @@ services:
 		t.Errorf("expected log output to contain 'hello from app', got: %s", output)
 	}
 
-	// Ctrl+C on `up -f` should NOT stop the daemon
+	// Ctrl-C on `up -f` should NOT stop the daemon
 	InterruptAndWait(cmd)
 
 	err = f.WaitForState("app", "running", 5*time.Second)
 	if err != nil {
-		t.Errorf("expected daemon to still be running after Ctrl+C: %v", err)
+		t.Errorf("expected daemon to still be running after Ctrl-C: %v", err)
 	}
 }
 

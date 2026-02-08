@@ -204,7 +204,7 @@ func streamLogs(client *Client, services []string, lines int, follow bool) error
 		return nil
 	}
 
-	// Handle Ctrl+C by closing the connection to unblock ReadNotification.
+	// Handle Ctrl-C by closing the connection to unblock ReadNotification.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -270,7 +270,7 @@ func RunAttach(socketPath string, service string) error {
 		}
 	}()
 
-	// Handle Ctrl+C by closing the connection to detach
+	// Handle Ctrl-C by closing the connection to detach
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
