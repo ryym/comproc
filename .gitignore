@@ -1,0 +1,2 @@
+# go build -o comproc ./cmd/comproc
+comproc
