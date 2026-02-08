@@ -83,3 +83,53 @@ services:
 		t.Errorf("expected working directory to be %s, got:\n%s", subDir, stdout)
 	}
 }
+
+// 8.3: Missing `command` field is rejected with an error.
+func TestConfig_InvalidNoCommand(t *testing.T) {
+	skipIfShort(t)
+	t.Parallel()
+
+	f := NewFixture(t)
+	f.WriteConfig(`
+services:
+  app:
+    restart: always
+`)
+
+	_, stderr, err := f.Run("up")
+
+	if err == nil {
+		t.Errorf("expected error for missing command")
+	}
+	if !strings.Contains(stderr, "command is required") {
+		t.Errorf("expected 'command is required' error, got: %s", stderr)
+	}
+}
+
+// 8.4: Circular dependency is detected and rejected with an error.
+func TestConfig_CircularDeps(t *testing.T) {
+	skipIfShort(t)
+	t.Parallel()
+
+	f := NewFixture(t)
+	f.WriteConfig(`
+services:
+  a:
+    command: sleep 60
+    depends_on:
+      - b
+  b:
+    command: sleep 60
+    depends_on:
+      - a
+`)
+
+	_, stderr, err := f.Run("up")
+
+	if err == nil {
+		t.Errorf("expected error for circular dependency")
+	}
+	if !strings.Contains(stderr, "circular dependency") {
+		t.Errorf("expected 'circular dependency' error, got: %s", stderr)
+	}
+}

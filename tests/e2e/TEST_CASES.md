@@ -81,9 +81,11 @@ Focus: process start/stop correctness, command options, dependency resolution, r
 | 7.4 | TestRestartPolicy_Always                | Process exits with 0; still restarted under always policy   |
 | 7.5 | TestRestartPolicy_CounterIncrements     | Restarts counter increases with each restart                |
 
-## 8. Config: env / working_dir
+## 8. Config
 
-| #   | Test                  | Description                                                 |
-| --- | --------------------- | ----------------------------------------------------------- |
-| 8.1 | TestConfig_EnvVars    | Environment variables from config are passed to the process |
-| 8.2 | TestConfig_WorkingDir | working_dir is used as the process's working directory      |
+| #   | Test                        | Description                                                 |
+| --- | --------------------------- | ----------------------------------------------------------- |
+| 8.1 | TestConfig_EnvVars          | Environment variables from config are passed to the process |
+| 8.2 | TestConfig_WorkingDir       | working_dir is used as the process's working directory      |
+| 8.3 | TestConfig_InvalidNoCommand | Missing `command` field is rejected with an error           |
+| 8.4 | TestConfig_CircularDeps     | Circular dependency is detected and rejected with an error  |
