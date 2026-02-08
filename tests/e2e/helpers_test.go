@@ -17,6 +17,13 @@ import (
 	"time"
 )
 
+func skipIfShort(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping E2E test in short mode")
+	}
+}
+
 // Fixture provides an isolated test environment for each test.
 type Fixture struct {
 	t          *testing.T

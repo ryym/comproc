@@ -45,18 +45,17 @@ Lower-priority concerns (not currently covered):
 
 ## File Organization
 
-| File              | Contents                                             |
-| ----------------- | ---------------------------------------------------- |
-| `setup_test.go`   | Binary build in `TestMain`                           |
-| `helpers_test.go` | `Fixture`, helpers (`StartDaemon`, `Up`, etc.)       |
-| `up_test.go`      | Tests for `up` command                               |
-| `down_test.go`    | Tests for `down` command                             |
-| `stop_test.go`    | Tests for `stop` command                             |
-| `restart_test.go` | Tests for `restart` command                          |
-| `status_test.go`  | Tests for `status` / `ps` command                    |
-| `logs_test.go`    | Tests for `logs` command                             |
-| `TEST_CASES.md`   | Authoritative list of all test cases                 |
-| `e2e_test.go`     | Legacy tests (to be migrated and eventually removed) |
+| File              | Contents                                       |
+| ----------------- | ---------------------------------------------- |
+| `setup_test.go`   | Binary build in `TestMain`                     |
+| `helpers_test.go` | `Fixture`, helpers (`StartDaemon`, `Up`, etc.) |
+| `up_test.go`      | Tests for `up` command                         |
+| `down_test.go`    | Tests for `down` command                       |
+| `stop_test.go`    | Tests for `stop` command                       |
+| `restart_test.go` | Tests for `restart` command                    |
+| `status_test.go`  | Tests for `status` / `ps` command              |
+| `logs_test.go`    | Tests for `logs` command                       |
+| `TEST_CASES.md`   | Authoritative list of all test cases           |
 
 ## Running Tests
 
