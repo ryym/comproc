@@ -1,23 +1,16 @@
 # Comproc
 
 A docker-compose-like process manager for local development.
-Run multiple processes in the background with a single command, and view their logs only when you need to.
+Run multiple processes in the background with a single command.
 
 ## Motivation
 
-During development you often need to run several processes at once — an API server, a frontend dev server, a database, a worker, etc.
-Typical approaches have trade-offs:
-
-- **Multiple terminal tabs**: manual, cluttered, easy to forget one
-- **Foreground multiplexer (e.g. foreman)**: logs from all services flood a single terminal
-
-Comproc takes the docker-compose approach: processes run in the background via a daemon, and you attach to their logs on demand.
-Define your services in a YAML file, `comproc up`, and you're done.
+During development you often need to run several processes at once — an API server, a frontend dev server, a worker, etc.
+With Comproc, you can run processes in the background via a daemon, and you attach to their logs on demand.
 
 ## Quick Start
 
 ```bash
-# Build
 go build -o comproc ./cmd/comproc
 
 # Define services in comproc.yaml
@@ -25,11 +18,6 @@ cat <<'EOF' > comproc.yaml
 services:
   api:
     command: go run ./cmd/api
-    depends_on:
-      - db
-  db:
-    command: docker run -p 5432:5432 postgres
-    restart: always
   frontend:
     command: npm run dev
     working_dir: ./frontend
@@ -41,12 +29,15 @@ EOF
 ./comproc up
 
 # Check what's running
-./comproc status
+./comproc ps
 
 # Stream logs (Ctrl+C to detach — processes keep running)
 ./comproc logs -f
 
-# Stop everything
+# Stop all processes
+./comproc stop
+
+# Stop all processes and daemon
 ./comproc down
 ```
 
@@ -54,13 +45,13 @@ EOF
 
 | Command                                 | Description                                        |
 | --------------------------------------- | -------------------------------------------------- |
+| `comproc ps` / `status`                 | Show service status                                |
 | `comproc up [service...]`               | Start services (launches daemon in the background) |
 | `comproc up -f [service...]`            | Start services and follow logs                     |
-| `comproc down`                          | Stop all services and shut down the daemon         |
-| `comproc stop [service...]`             | Stop services without shutting down the daemon     |
-| `comproc restart [service...]`          | Restart services                                   |
 | `comproc logs [-f] [-n N] [service...]` | View logs                                          |
-| `comproc status` / `ps`                 | Show service status                                |
+| `comproc restart [service...]`          | Restart services                                   |
+| `comproc stop [service...]`             | Stop services without shutting down the daemon     |
+| `comproc down`                          | Stop all services and shut down the daemon         |
 | `comproc attach <service>`              | Attach to a service (forward stdin + stream logs)  |
 
 When no services are specified, commands apply to all services.
@@ -100,7 +91,7 @@ Circular dependencies are detected and rejected at startup.
 ## How It Works
 
 The first `comproc up` spawns a background daemon that manages all child processes.
-Subsequent commands (`status`, `logs`, `stop`, ...) communicate with the daemon over a Unix socket using JSON-RPC.
+Subsequent commands (`ps`, `logs`, `stop`, ...) communicate with the daemon over a Unix socket using JSON-RPC.
 Each config file gets its own socket, so multiple projects can run independently.
 
 ```
