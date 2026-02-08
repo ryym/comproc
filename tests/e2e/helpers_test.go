@@ -307,6 +307,18 @@ func ContainsAll(actual, expected []string) bool {
 	return true
 }
 
+// WaitForContent polls the buffer until it contains the expected substring.
+func WaitForContent(buf *SyncBuffer, substr string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if strings.Contains(buf.String(), substr) {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for %q in output (got: %s)", substr, buf.String())
+}
+
 // SyncBuffer is a thread-safe buffer for capturing command output.
 type SyncBuffer struct {
 	mu  sync.Mutex

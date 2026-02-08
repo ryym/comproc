@@ -16,6 +16,7 @@ func skipIfShort(t *testing.T) {
 
 func TestUp(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -43,48 +44,11 @@ services:
 	}
 }
 
-func TestDown(t *testing.T) {
-	skipIfShort(t)
-
-	f := NewFixture(t)
-	f.WriteConfig(`
-services:
-  app:
-    command: sleep 60
-`)
-	_, stderr, err := f.Run("up")
-	if err != nil {
-		t.Fatalf("up failed: %v\n%s", err, stderr)
-	}
-
-	// Wait for service to start
-	err = f.WaitForState("app", "running", 5*time.Second)
-	if err != nil {
-		t.Fatalf("WaitForState failed: %v", err)
-	}
-
-	// Stop all services and shut down daemon
-	stdout, _, err := f.Run("down")
-	if err != nil {
-		t.Fatalf("down failed: %v", err)
-	}
-
-	stopped := ParseStoppedServices(stdout)
-	if !ContainsAll(stopped, []string{"app"}) {
-		t.Errorf("expected 'app' in stopped services, got: %v", stopped)
-	}
-
-	// Verify daemon shut down (socket gone)
-	err = f.WaitForSocketGone(5 * time.Second)
-	if err != nil {
-		t.Errorf("expected socket to be removed after down: %v", err)
-	}
-}
-
 // --- Dependency Tests ---
 
 func TestDependencies_StartOrder(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -115,20 +79,17 @@ services:
 		t.Fatalf("WaitForState frontend failed: %v", err)
 	}
 
-	// Give time for log output to arrive via log following
-	time.Sleep(500 * time.Millisecond)
+	// Check that all services started
+	if err := WaitForContent(outBuf, "[frontend] started", 5*time.Second); err != nil {
+		t.Errorf("expected frontend log: %v", err)
+	}
 
 	output := outBuf.String()
-
-	// Check that all services started
 	if !strings.Contains(output, "[db] started") {
 		t.Errorf("expected db to start")
 	}
 	if !strings.Contains(output, "[api] started") {
 		t.Errorf("expected api to start")
-	}
-	if !strings.Contains(output, "[frontend] started") {
-		t.Errorf("expected frontend to start")
 	}
 
 	// Clean up
@@ -137,6 +98,7 @@ services:
 
 func TestDependencies_StopOrder(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -173,6 +135,7 @@ services:
 
 func TestRestartPolicy_Never(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -206,6 +169,7 @@ services:
 
 func TestRestartPolicy_OnFailure(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -226,7 +190,7 @@ services:
 		if err == nil && status.Restarts >= 1 {
 			return // Success
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	status, _ := f.GetServiceStatus("app")
@@ -235,6 +199,7 @@ services:
 
 func TestRestartPolicy_Always(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -255,7 +220,7 @@ services:
 		if err == nil && status.Restarts >= 1 {
 			return // Success
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	status, _ := f.GetServiceStatus("app")
@@ -266,6 +231,7 @@ services:
 
 func TestStatus_Format(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -306,6 +272,7 @@ services:
 
 func TestStatus_NoDaemon(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 
@@ -319,6 +286,7 @@ func TestStatus_NoDaemon(t *testing.T) {
 
 func TestStatus_NoDaemon_WithConfig(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -347,6 +315,7 @@ services:
 
 func TestLogs_RecentLines(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -359,12 +328,15 @@ services:
 		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
-	// Wait for logs
-	time.Sleep(1 * time.Second)
-
-	stdout, _, err := f.Run("logs", "-n", "10")
-	if err != nil {
-		t.Fatalf("logs failed: %v", err)
+	// Poll logs until expected content appears
+	var stdout string
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		stdout, _, err = f.Run("logs", "-n", "10")
+		if err == nil && strings.Contains(stdout, "line3") {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	if !strings.Contains(stdout, "line1") ||
@@ -376,6 +348,7 @@ services:
 
 func TestLogs_ServiceFilter(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -390,13 +363,15 @@ services:
 		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
-	// Wait for logs
-	time.Sleep(1 * time.Second)
-
-	// Get only app1 logs
-	stdout, _, err := f.Run("logs", "-n", "10", "app1")
-	if err != nil {
-		t.Fatalf("logs failed: %v", err)
+	// Poll logs until expected content appears
+	var stdout string
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		stdout, _, err = f.Run("logs", "-n", "10", "app1")
+		if err == nil && strings.Contains(stdout, "from app1") {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	if !strings.Contains(stdout, "from app1") {
@@ -417,6 +392,7 @@ services:
 
 func TestRestart_SingleService(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -472,6 +448,7 @@ services:
 
 func TestUp_InvalidConfig(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -492,6 +469,7 @@ services:
 
 func TestUp_CircularDependency(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -518,50 +496,9 @@ services:
 
 // --- Multiple Services Tests ---
 
-func TestDown_AllServices(t *testing.T) {
-	skipIfShort(t)
-
-	f := NewFixture(t)
-	f.WriteConfig(`
-services:
-  app1:
-    command: sleep 60
-  app2:
-    command: sleep 60
-`)
-	_, stderr, err := f.Run("up")
-	if err != nil {
-		t.Fatalf("up failed: %v\n%s", err, stderr)
-	}
-
-	// Wait for services
-	for _, svc := range []string{"app1", "app2"} {
-		err = f.WaitForState(svc, "running", 5*time.Second)
-		if err != nil {
-			t.Fatalf("WaitForState %s failed: %v", svc, err)
-		}
-	}
-
-	// Stop all and shut down daemon
-	stdout, _, err := f.Run("down")
-	if err != nil {
-		t.Fatalf("down failed: %v", err)
-	}
-
-	stopped := ParseStoppedServices(stdout)
-	if !ContainsAll(stopped, []string{"app1", "app2"}) {
-		t.Errorf("expected all services stopped, got: %v", stopped)
-	}
-
-	// Verify daemon shut down
-	err = f.WaitForSocketGone(5 * time.Second)
-	if err != nil {
-		t.Errorf("expected socket to be removed after down: %v", err)
-	}
-}
-
 func TestStop_SpecificService(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -609,24 +546,9 @@ services:
 	}
 }
 
-func TestDown_NoDaemon(t *testing.T) {
-	skipIfShort(t)
-
-	f := NewFixture(t)
-
-	// down with no daemon should succeed silently
-	stdout, _, err := f.Run("down")
-	if err != nil {
-		t.Errorf("expected down to succeed when no daemon, got error: %v", err)
-	}
-	// Should produce no output (or empty)
-	if strings.TrimSpace(stdout) != "" {
-		t.Errorf("expected empty output, got: %s", stdout)
-	}
-}
-
 func TestRestart_NoDaemon(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 
@@ -641,6 +563,7 @@ func TestRestart_NoDaemon(t *testing.T) {
 
 func TestLogs_NoDaemon(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 

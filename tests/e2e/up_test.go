@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
@@ -9,6 +8,7 @@ import (
 // 1.1: Start a single service; verify state=running and PID is assigned.
 func TestUp_SingleService(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -38,6 +38,7 @@ services:
 // 1.2: Start multiple services at once; all become running.
 func TestUp_MultipleServices(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -73,6 +74,7 @@ services:
 // 1.3: `up svc1 svc2` starts only specified services; others remain stopped.
 func TestUp_SpecificServices(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -108,6 +110,7 @@ services:
 // 1.4: `up api` auto-starts its dependency (db) as well.
 func TestUp_SpecificServiceWithDeps(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -135,6 +138,7 @@ services:
 // 1.5: Running `up` again while daemon is active does not disrupt existing services.
 func TestUp_AlreadyRunning(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -179,6 +183,7 @@ services:
 // 1.6: After `stop svc`, `up svc` restarts it.
 func TestUp_StartStoppedService(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -220,6 +225,7 @@ services:
 // 1.7: `up -f` streams logs; Ctrl-C disconnects but daemon keeps running.
 func TestUp_FollowLogs(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -236,12 +242,8 @@ services:
 		t.Fatalf("WaitForSocket failed: %v", err)
 	}
 
-	// Wait for log output to appear
-	time.Sleep(1 * time.Second)
-
-	output := outBuf.String()
-	if !strings.Contains(output, "hello from app") {
-		t.Errorf("expected log output to contain 'hello from app', got: %s", output)
+	if err := WaitForContent(outBuf, "hello from app", 5*time.Second); err != nil {
+		t.Errorf("expected log output to contain 'hello from app': %v", err)
 	}
 
 	// Ctrl-C on `up -f` should NOT stop the daemon
@@ -256,6 +258,7 @@ services:
 // 1.8: `up -f svc1` starts only svc1 and follows its logs.
 func TestUp_FollowLogsSpecificServices(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
@@ -288,18 +291,15 @@ services:
 		t.Errorf("expected app2 to be stopped, got %s", status.State)
 	}
 
-	// Wait for log output
-	time.Sleep(1 * time.Second)
-
-	output := outBuf.String()
-	if !strings.Contains(output, "from app1") {
-		t.Errorf("expected log output to contain 'from app1', got: %s", output)
+	if err := WaitForContent(outBuf, "from app1", 5*time.Second); err != nil {
+		t.Errorf("expected log output to contain 'from app1': %v", err)
 	}
 }
 
 // 1.9: While daemon runs, `up newSvc` starts only the not-yet-running service.
 func TestUp_StartsOnlyNewServices(t *testing.T) {
 	skipIfShort(t)
+	t.Parallel()
 
 	f := NewFixture(t)
 	f.WriteConfig(`
