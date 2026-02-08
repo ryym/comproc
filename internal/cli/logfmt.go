@@ -91,7 +91,7 @@ func (f *LogFormatter) PrintLine(service, line string) {
 	padded := service + strings.Repeat(" ", f.maxNameLen-len(service))
 
 	if f.colorEnabled {
-		fmt.Fprintf(f.out, "%s%s%s | %s\n", color, padded, colorReset, line)
+		fmt.Fprintf(f.out, "%s%s |%s %s\n", color, padded, colorReset, line)
 	} else {
 		fmt.Fprintf(f.out, "%s | %s\n", padded, line)
 	}
