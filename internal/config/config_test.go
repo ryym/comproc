@@ -169,6 +169,36 @@ services:
 	}
 }
 
+func TestParse_PreservesServiceOrder(t *testing.T) {
+	yaml := `
+services:
+  frontend:
+    command: npm run dev
+  api:
+    command: go run ./cmd/api
+  db:
+    command: docker run postgres
+  cache:
+    command: redis-server
+`
+
+	cfg, err := Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := []string{"frontend", "api", "db", "cache"}
+	names := cfg.ServiceNames()
+	if len(names) != len(expected) {
+		t.Fatalf("expected %d service names, got %d", len(expected), len(names))
+	}
+	for i, name := range names {
+		if name != expected[i] {
+			t.Errorf("ServiceNames()[%d] = %q, want %q", i, name, expected[i])
+		}
+	}
+}
+
 func TestGetRestartPolicy_Default(t *testing.T) {
 	s := &Service{Command: "echo test"}
 	if s.GetRestartPolicy() != RestartNever {

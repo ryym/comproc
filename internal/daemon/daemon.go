@@ -19,11 +19,12 @@ import (
 type Daemon struct {
 	mu sync.RWMutex
 
-	config     *config.Config
-	configPath string
-	processes  map[string]*process.Process
-	logMgr     *LogManager
-	supervisor *Supervisor
+	config       *config.Config
+	configPath   string
+	serviceOrder []string
+	processes    map[string]*process.Process
+	logMgr       *LogManager
+	supervisor   *Supervisor
 
 	server *Server
 	ctx    context.Context
@@ -45,12 +46,13 @@ func New(configPath string) (*Daemon, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	d := &Daemon{
-		config:     cfg,
-		configPath: absConfigPath,
-		processes:  make(map[string]*process.Process),
-		logMgr:     NewLogManager(1000), // Keep last 1000 lines per service
-		ctx:        ctx,
-		cancel:     cancel,
+		config:       cfg,
+		configPath:   absConfigPath,
+		serviceOrder: cfg.ServiceNames(),
+		processes:    make(map[string]*process.Process),
+		logMgr:       NewLogManager(1000), // Keep last 1000 lines per service
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 	d.supervisor = NewSupervisor(d)
 
@@ -215,7 +217,8 @@ func (d *Daemon) GetStatus() []ServiceStatus {
 	defer d.mu.RUnlock()
 
 	var statuses []ServiceStatus
-	for name, proc := range d.processes {
+	for _, name := range d.serviceOrder {
+		proc := d.processes[name]
 		status := ServiceStatus{
 			Name:     name,
 			State:    string(proc.GetState()),
@@ -340,14 +343,7 @@ type ServiceStatus struct {
 	ExitCode  int
 }
 
-// ServiceNames returns the names of all configured services.
+// ServiceNames returns the names of all configured services in config file order.
 func (d *Daemon) ServiceNames() []string {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-
-	names := make([]string, 0, len(d.processes))
-	for name := range d.processes {
-		names = append(names, name)
-	}
-	return names
+	return d.serviceOrder
 }

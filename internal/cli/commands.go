@@ -114,7 +114,7 @@ func showOfflineStatus(configPath string) error {
 	}
 
 	var services []protocol.ServiceStatus
-	for name := range cfg.Services {
+	for _, name := range cfg.ServiceNames() {
 		services = append(services, protocol.ServiceStatus{
 			Name:  name,
 			State: "stopped",

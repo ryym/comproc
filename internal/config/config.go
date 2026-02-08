@@ -30,7 +30,42 @@ type Service struct {
 
 // Config represents the entire comproc configuration.
 type Config struct {
-	Services map[string]*Service `yaml:"services"`
+	Services     map[string]*Service `yaml:"services"`
+	ServiceOrder []string            `yaml:"-"`
+}
+
+// ServiceNames returns service names in the order they appear in the config file.
+func (c *Config) ServiceNames() []string {
+	return c.ServiceOrder
+}
+
+// UnmarshalYAML implements custom unmarshaling to preserve service key order.
+func (c *Config) UnmarshalYAML(value *yaml.Node) error {
+	// value is a mapping node with keys like "services"
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("expected mapping node, got %d", value.Kind)
+	}
+
+	// Find the "services" key and extract ordered keys
+	for i := 0; i < len(value.Content)-1; i += 2 {
+		keyNode := value.Content[i]
+		valNode := value.Content[i+1]
+		if keyNode.Value == "services" && valNode.Kind == yaml.MappingNode {
+			for j := 0; j < len(valNode.Content)-1; j += 2 {
+				c.ServiceOrder = append(c.ServiceOrder, valNode.Content[j].Value)
+			}
+			break
+		}
+	}
+
+	// Use a temporary type to avoid infinite recursion
+	type rawConfig Config
+	var raw rawConfig
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	c.Services = raw.Services
+	return nil
 }
 
 // Load reads and parses a configuration file.
@@ -72,8 +107,8 @@ func (c *Config) Validate() error {
 		return errors.New("no services defined")
 	}
 
-	for name, svc := range c.Services {
-		if err := svc.Validate(c); err != nil {
+	for _, name := range c.ServiceOrder {
+		if err := c.Services[name].Validate(c); err != nil {
 			return fmt.Errorf("service %q: %w", name, err)
 		}
 	}
@@ -155,7 +190,7 @@ func (c *Config) detectCycles() error {
 		return nil
 	}
 
-	for name := range c.Services {
+	for _, name := range c.ServiceOrder {
 		if err := visit(name, nil); err != nil {
 			return err
 		}
@@ -187,7 +222,7 @@ func (c *Config) TopologicalSort() ([]*Service, error) {
 		return nil
 	}
 
-	for name := range c.Services {
+	for _, name := range c.ServiceOrder {
 		if err := visit(name); err != nil {
 			return nil, err
 		}
