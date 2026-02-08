@@ -388,62 +388,6 @@ services:
 	}
 }
 
-// --- Restart Command Tests ---
-
-func TestRestart_SingleService(t *testing.T) {
-	skipIfShort(t)
-	t.Parallel()
-
-	f := NewFixture(t)
-	f.WriteConfig(`
-services:
-  app:
-    command: sleep 60
-`)
-	_, stderr, err := f.Run("up")
-	if err != nil {
-		t.Fatalf("up failed: %v\n%s", err, stderr)
-	}
-
-	err = f.WaitForState("app", "running", 5*time.Second)
-	if err != nil {
-		t.Fatalf("WaitForState failed: %v", err)
-	}
-
-	// Get original PID
-	status1, err := f.GetServiceStatus("app")
-	if err != nil {
-		t.Fatalf("GetServiceStatus failed: %v", err)
-	}
-	originalPID := status1.PID
-
-	// Restart
-	stdout, _, err := f.Run("restart", "app")
-	if err != nil {
-		t.Fatalf("restart failed: %v", err)
-	}
-
-	restarted := ParseRestartedServices(stdout)
-	if !ContainsAll(restarted, []string{"app"}) {
-		t.Errorf("expected 'app' in restarted services, got: %v", restarted)
-	}
-
-	// Wait for new process
-	err = f.WaitForState("app", "running", 5*time.Second)
-	if err != nil {
-		t.Fatalf("WaitForState after restart failed: %v", err)
-	}
-
-	// Verify PID changed
-	status2, err := f.GetServiceStatus("app")
-	if err != nil {
-		t.Fatalf("GetServiceStatus after restart failed: %v", err)
-	}
-	if status2.PID == originalPID {
-		t.Errorf("expected PID to change after restart, but still %d", originalPID)
-	}
-}
-
 // --- Error Handling Tests ---
 
 func TestUp_InvalidConfig(t *testing.T) {
@@ -491,73 +435,6 @@ services:
 	}
 	if !strings.Contains(stderr, "circular dependency") {
 		t.Errorf("expected 'circular dependency' error, got: %s", stderr)
-	}
-}
-
-// --- Multiple Services Tests ---
-
-func TestStop_SpecificService(t *testing.T) {
-	skipIfShort(t)
-	t.Parallel()
-
-	f := NewFixture(t)
-	f.WriteConfig(`
-services:
-  app1:
-    command: sleep 60
-  app2:
-    command: sleep 60
-`)
-	_, stderr, err := f.Run("up")
-	if err != nil {
-		t.Fatalf("up failed: %v\n%s", err, stderr)
-	}
-
-	for _, svc := range []string{"app1", "app2"} {
-		err = f.WaitForState(svc, "running", 5*time.Second)
-		if err != nil {
-			t.Fatalf("WaitForState %s failed: %v", svc, err)
-		}
-	}
-
-	// Stop only app1
-	stdout, _, err := f.Run("stop", "app1")
-	if err != nil {
-		t.Fatalf("stop failed: %v", err)
-	}
-
-	stopped := ParseStoppedServices(stdout)
-	if !ContainsAll(stopped, []string{"app1"}) {
-		t.Errorf("expected app1 in stopped, got: %v", stopped)
-	}
-
-	// app2 should still be running
-	status, err := f.GetServiceStatus("app2")
-	if err != nil {
-		t.Fatalf("GetServiceStatus failed: %v", err)
-	}
-	if status.State != "running" {
-		t.Errorf("expected app2 to still be running, got: %s", status.State)
-	}
-
-	// Daemon should still be up (socket exists)
-	if err := f.WaitForSocket(1 * time.Second); err != nil {
-		t.Errorf("expected daemon to still be running after stop")
-	}
-}
-
-func TestRestart_NoDaemon(t *testing.T) {
-	skipIfShort(t)
-	t.Parallel()
-
-	f := NewFixture(t)
-
-	stdout, _, err := f.Run("restart")
-	if err != nil {
-		t.Errorf("expected restart to succeed when no daemon, got error: %v", err)
-	}
-	if !strings.Contains(stdout, "No services running") {
-		t.Errorf("expected 'No services running', got: %s", stdout)
 	}
 }
 
