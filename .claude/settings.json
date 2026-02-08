@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go:*)",
+      "Bash(git:*)",
+      "Bash(mkdir:*)",
+      "Bash(./comproc:*)",
+      "Bash(COMPROC_SOCKET=/tmp/comproc/test.sock go run:*)",
+      "Search(*)"
+    ],
+    "deny": ["Bash(git -C:*)", "Bash(git push:*)"],
+    "defaultMode": "acceptEdits"
+  }
+}
