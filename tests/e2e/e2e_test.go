@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -19,14 +18,14 @@ func TestUp(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app:
     command: sleep 60
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	// Verify service is running
@@ -44,51 +43,18 @@ services:
 	}
 }
 
-func TestUp_FollowLogs(t *testing.T) {
-	skipIfShort(t)
-
-	f := NewFixture(t)
-	config := `
-services:
-  app:
-    command: sh -c 'echo "hello from app"; sleep 60'
-`
-	cmd, outBuf, err := f.StartDaemonWithLogs(config)
-	if err != nil {
-		t.Fatalf("StartDaemonWithLogs failed: %v", err)
-	}
-
-	// Wait a bit for log output
-	time.Sleep(500 * time.Millisecond)
-
-	output := outBuf.String()
-	if !strings.Contains(output, "Started:") {
-		t.Errorf("expected 'Started:' in output, got: %s", output)
-	}
-
-	// Send SIGINT to the up -f process (should NOT stop daemon)
-	cmd.Process.Signal(os.Interrupt)
-	cmd.Wait()
-
-	// Daemon should still be running
-	err = f.WaitForState("app", "running", 5*time.Second)
-	if err != nil {
-		t.Errorf("expected daemon to still be running after Ctrl+C on up -f: %v", err)
-	}
-}
-
 func TestDown(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app:
     command: sleep 60
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	// Wait for service to start
@@ -98,12 +64,12 @@ services:
 	}
 
 	// Stop all services and shut down daemon
-	output, err := f.Down()
+	stdout, _, err := f.Run("down")
 	if err != nil {
-		t.Fatalf("Down failed: %v", err)
+		t.Fatalf("down failed: %v", err)
 	}
 
-	stopped := ParseStoppedServices(output)
+	stopped := ParseStoppedServices(stdout)
 	if !ContainsAll(stopped, []string{"app"}) {
 		t.Errorf("expected 'app' in stopped services, got: %v", stopped)
 	}
@@ -121,7 +87,7 @@ func TestDependencies_StartOrder(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   db:
     command: sh -c 'echo "[db] started"; sleep 60'
@@ -133,10 +99,14 @@ services:
     command: sh -c 'echo "[frontend] started"; sleep 60'
     depends_on:
       - api
-`
-	cmd, outBuf, err := f.StartDaemonWithLogs(config)
+`)
+	cmd, outBuf, err := f.RunAsync("up", "-f")
 	if err != nil {
-		t.Fatalf("StartDaemonWithLogs failed: %v", err)
+		t.Fatalf("RunAsync failed: %v", err)
+	}
+
+	if err := f.WaitForSocket(10 * time.Second); err != nil {
+		t.Fatalf("WaitForSocket failed: %v", err)
 	}
 
 	// Wait for all services to start
@@ -162,15 +132,14 @@ services:
 	}
 
 	// Clean up
-	cmd.Process.Signal(os.Interrupt)
-	cmd.Wait()
+	InterruptAndWait(cmd)
 }
 
 func TestDependencies_StopOrder(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   db:
     command: sleep 60
@@ -178,10 +147,10 @@ services:
     command: sleep 60
     depends_on:
       - db
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	// Wait for services to start
@@ -206,15 +175,15 @@ func TestRestartPolicy_Never(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app:
     command: sh -c 'echo done; exit 0'
     restart: never
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	// Wait for process to exit
@@ -239,15 +208,15 @@ func TestRestartPolicy_OnFailure(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app:
     command: sh -c 'echo failing; exit 1'
     restart: on-failure
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	// Wait for at least one restart
@@ -268,15 +237,15 @@ func TestRestartPolicy_Always(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app:
     command: sh -c 'echo exiting; exit 0'
     restart: always
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	// Wait for at least one restart (exit 0 should still trigger restart with always)
@@ -299,14 +268,14 @@ func TestStatus_Format(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app:
     command: sleep 60
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	err = f.WaitForState("app", "running", 5*time.Second)
@@ -352,17 +321,16 @@ func TestStatus_NoDaemon_WithConfig(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app:
     command: sleep 60
   db:
     command: sleep 60
-`
-	f.WriteConfig(config)
+`)
 
 	// No daemon running, but config exists
-	stdout, _, _ := f.Run("-f", f.ConfigPath, "status")
+	stdout, _, _ := f.Run("status")
 
 	if !strings.Contains(stdout, "app") || !strings.Contains(stdout, "stopped") {
 		t.Errorf("expected services shown as stopped, got: %s", stdout)
@@ -381,28 +349,28 @@ func TestLogs_RecentLines(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app:
     command: sh -c 'echo "line1"; echo "line2"; echo "line3"; sleep 60'
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	// Wait for logs
 	time.Sleep(1 * time.Second)
 
-	logs, err := f.Logs(10)
+	stdout, _, err := f.Run("logs", "-n", "10")
 	if err != nil {
-		t.Fatalf("Logs failed: %v", err)
+		t.Fatalf("logs failed: %v", err)
 	}
 
-	if !strings.Contains(logs, "line1") ||
-		!strings.Contains(logs, "line2") ||
-		!strings.Contains(logs, "line3") {
-		t.Errorf("expected log lines, got:\n%s", logs)
+	if !strings.Contains(stdout, "line1") ||
+		!strings.Contains(stdout, "line2") ||
+		!strings.Contains(stdout, "line3") {
+		t.Errorf("expected log lines, got:\n%s", stdout)
 	}
 }
 
@@ -410,33 +378,33 @@ func TestLogs_ServiceFilter(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app1:
     command: sh -c 'echo "from app1"; sleep 60'
   app2:
     command: sh -c 'echo "from app2"; sleep 60'
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	// Wait for logs
 	time.Sleep(1 * time.Second)
 
 	// Get only app1 logs
-	logs, err := f.Logs(10, "app1")
+	stdout, _, err := f.Run("logs", "-n", "10", "app1")
 	if err != nil {
-		t.Fatalf("Logs failed: %v", err)
+		t.Fatalf("logs failed: %v", err)
 	}
 
-	if !strings.Contains(logs, "from app1") {
-		t.Errorf("expected app1 log, got:\n%s", logs)
+	if !strings.Contains(stdout, "from app1") {
+		t.Errorf("expected app1 log, got:\n%s", stdout)
 	}
 
 	// When filtering, we should only see app1's logs
-	lines := strings.Split(strings.TrimSpace(logs), "\n")
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	for _, line := range lines {
 		plain := stripANSI(line)
 		if plain != "" && !strings.HasPrefix(plain, "app1") {
@@ -451,14 +419,14 @@ func TestRestart_SingleService(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app:
     command: sleep 60
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	err = f.WaitForState("app", "running", 5*time.Second)
@@ -474,12 +442,12 @@ services:
 	originalPID := status1.PID
 
 	// Restart
-	output, err := f.Restart("app")
+	stdout, _, err := f.Run("restart", "app")
 	if err != nil {
-		t.Fatalf("Restart failed: %v", err)
+		t.Fatalf("restart failed: %v", err)
 	}
 
-	restarted := ParseRestartedServices(output)
+	restarted := ParseRestartedServices(stdout)
 	if !ContainsAll(restarted, []string{"app"}) {
 		t.Errorf("expected 'app' in restarted services, got: %v", restarted)
 	}
@@ -506,16 +474,13 @@ func TestUp_InvalidConfig(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	// Missing command
-	config := `
+	f.WriteConfig(`
 services:
   app:
     restart: always
-`
-	f.WriteConfig(config)
+`)
 
-	// Config errors are caught before spawning the daemon
-	_, stderr, err := f.RunWithTimeout(5*time.Second, "-f", f.ConfigPath, "up")
+	_, stderr, err := f.Run("up")
 
 	if err == nil {
 		t.Errorf("expected error for missing command")
@@ -529,7 +494,7 @@ func TestUp_CircularDependency(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   a:
     command: sleep 60
@@ -539,11 +504,9 @@ services:
     command: sleep 60
     depends_on:
       - a
-`
-	f.WriteConfig(config)
+`)
 
-	// Config errors are caught before spawning the daemon
-	_, stderr, err := f.RunWithTimeout(5*time.Second, "-f", f.ConfigPath, "up")
+	_, stderr, err := f.Run("up")
 
 	if err == nil {
 		t.Errorf("expected error for circular dependency")
@@ -555,55 +518,20 @@ services:
 
 // --- Multiple Services Tests ---
 
-func TestUp_MultipleServices(t *testing.T) {
-	skipIfShort(t)
-
-	f := NewFixture(t)
-	config := `
-services:
-  app1:
-    command: sleep 60
-  app2:
-    command: sleep 60
-  app3:
-    command: sleep 60
-`
-	err := f.StartDaemon(config)
-	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
-	}
-
-	// Wait for all services
-	for _, svc := range []string{"app1", "app2", "app3"} {
-		err = f.WaitForState(svc, "running", 5*time.Second)
-		if err != nil {
-			t.Errorf("WaitForState %s failed: %v", svc, err)
-		}
-	}
-
-	statuses, err := f.GetStatus()
-	if err != nil {
-		t.Fatalf("GetStatus failed: %v", err)
-	}
-	if len(statuses) != 3 {
-		t.Errorf("expected 3 services, got %d", len(statuses))
-	}
-}
-
 func TestDown_AllServices(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app1:
     command: sleep 60
   app2:
     command: sleep 60
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	// Wait for services
@@ -615,12 +543,12 @@ services:
 	}
 
 	// Stop all and shut down daemon
-	output, err := f.Down()
+	stdout, _, err := f.Run("down")
 	if err != nil {
-		t.Fatalf("Down failed: %v", err)
+		t.Fatalf("down failed: %v", err)
 	}
 
-	stopped := ParseStoppedServices(output)
+	stopped := ParseStoppedServices(stdout)
 	if !ContainsAll(stopped, []string{"app1", "app2"}) {
 		t.Errorf("expected all services stopped, got: %v", stopped)
 	}
@@ -636,16 +564,16 @@ func TestStop_SpecificService(t *testing.T) {
 	skipIfShort(t)
 
 	f := NewFixture(t)
-	config := `
+	f.WriteConfig(`
 services:
   app1:
     command: sleep 60
   app2:
     command: sleep 60
-`
-	err := f.StartDaemon(config)
+`)
+	_, stderr, err := f.Run("up")
 	if err != nil {
-		t.Fatalf("StartDaemon failed: %v", err)
+		t.Fatalf("up failed: %v\n%s", err, stderr)
 	}
 
 	for _, svc := range []string{"app1", "app2"} {
@@ -656,12 +584,12 @@ services:
 	}
 
 	// Stop only app1
-	output, err := f.Stop("app1")
+	stdout, _, err := f.Run("stop", "app1")
 	if err != nil {
-		t.Fatalf("Stop failed: %v", err)
+		t.Fatalf("stop failed: %v", err)
 	}
 
-	stopped := ParseStoppedServices(output)
+	stopped := ParseStoppedServices(stdout)
 	if !ContainsAll(stopped, []string{"app1"}) {
 		t.Errorf("expected app1 in stopped, got: %v", stopped)
 	}

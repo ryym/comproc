@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -44,14 +45,10 @@ func NewFixture(t *testing.T) *Fixture {
 	}
 
 	t.Cleanup(func() {
-		// Try graceful shutdown first
 		f.Run("down")
-		// Stop daemon process if still running
 		if f.daemonCmd != nil && f.daemonCmd.Process != nil {
-			f.daemonCmd.Process.Signal(os.Interrupt)
-			f.daemonCmd.Wait()
+			InterruptAndWait(f.daemonCmd)
 		}
-		// Clean up temp dir
 		os.RemoveAll(tmpDir)
 	})
 
@@ -59,7 +56,7 @@ func NewFixture(t *testing.T) *Fixture {
 }
 
 // WriteConfig writes a YAML config file to the temp directory.
-func (f *Fixture) WriteConfig(yaml string) string {
+func (f *Fixture) WriteConfig(yaml string) {
 	f.t.Helper()
 
 	configPath := filepath.Join(f.TempDir, "comproc.yaml")
@@ -67,22 +64,18 @@ func (f *Fixture) WriteConfig(yaml string) string {
 		f.t.Fatalf("failed to write config: %v", err)
 	}
 	f.ConfigPath = configPath
-	return configPath
 }
 
-// Run executes a comproc command and waits for it to complete.
+// Run executes `comproc [-f <configPath>] <args...>` and waits for it to complete.
+// The -f flag is prepended automatically when WriteConfig has been called.
 func (f *Fixture) Run(args ...string) (stdout, stderr string, err error) {
-	return f.RunWithTimeout(30*time.Second, args...)
-}
-
-// RunWithTimeout executes a comproc command with a custom timeout.
-func (f *Fixture) RunWithTimeout(timeout time.Duration, args ...string) (stdout, stderr string, err error) {
 	f.t.Helper()
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binPath, args...)
+	fullArgs := f.buildArgs(args...)
+	cmd := exec.CommandContext(ctx, binPath, fullArgs...)
 	cmd.Env = append(os.Environ(), "COMPROC_SOCKET="+f.SocketPath)
 
 	var outBuf, errBuf bytes.Buffer
@@ -93,35 +86,16 @@ func (f *Fixture) RunWithTimeout(timeout time.Duration, args ...string) (stdout,
 	return outBuf.String(), errBuf.String(), err
 }
 
-// StartDaemon starts the daemon in background and waits for it to be ready.
-func (f *Fixture) StartDaemon(config string) error {
+// RunAsync starts `comproc [-f <configPath>] <args...>` without waiting for completion.
+// The command runs in its own process group so InterruptAndWait can simulate Ctrl+C.
+// Returns the running command and a thread-safe output buffer.
+func (f *Fixture) RunAsync(args ...string) (*exec.Cmd, *SyncBuffer, error) {
 	f.t.Helper()
 
-	f.WriteConfig(config)
-
-	// Start daemon with up (always runs in background)
-	stdout, stderr, err := f.RunWithTimeout(10*time.Second, "-f", f.ConfigPath, "up")
-	if err != nil {
-		return fmt.Errorf("failed to start daemon: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
-	}
-
-	// Wait for socket to be available
-	if err := f.WaitForSocket(5 * time.Second); err != nil {
-		return fmt.Errorf("socket not ready: %v", err)
-	}
-
-	return nil
-}
-
-// StartDaemonWithLogs starts services with log following (non-blocking).
-// The returned command runs `up -f` in the background, streaming logs to outBuf.
-func (f *Fixture) StartDaemonWithLogs(config string) (*exec.Cmd, *SyncBuffer, error) {
-	f.t.Helper()
-
-	f.WriteConfig(config)
-
-	cmd := exec.Command(binPath, "-f", f.ConfigPath, "up", "-f")
+	fullArgs := f.buildArgs(args...)
+	cmd := exec.Command(binPath, fullArgs...)
 	cmd.Env = append(os.Environ(), "COMPROC_SOCKET="+f.SocketPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	outBuf := &SyncBuffer{}
 	cmd.Stdout = outBuf
@@ -132,15 +106,25 @@ func (f *Fixture) StartDaemonWithLogs(config string) (*exec.Cmd, *SyncBuffer, er
 	}
 
 	f.daemonCmd = cmd
-
-	// Wait for socket to be available
-	if err := f.WaitForSocket(10 * time.Second); err != nil {
-		cmd.Process.Signal(os.Interrupt)
-		cmd.Wait()
-		return nil, nil, fmt.Errorf("socket not ready: %v", err)
-	}
-
 	return cmd, outBuf, nil
+}
+
+// buildArgs prepends `-f <configPath>` when a config has been written.
+func (f *Fixture) buildArgs(args ...string) []string {
+	if f.ConfigPath != "" {
+		return append([]string{"-f", f.ConfigPath}, args...)
+	}
+	return args
+}
+
+// InterruptAndWait simulates Ctrl+C by sending SIGINT to the process group
+// of the given command, then waits for it to exit. This requires the command
+// to have been started with SysProcAttr.Setpgid = true.
+func InterruptAndWait(cmd *exec.Cmd) error {
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err != nil {
+		return fmt.Errorf("failed to send SIGINT to process group: %w", err)
+	}
+	return cmd.Wait()
 }
 
 // WaitForSocket waits until the daemon socket is available.
@@ -186,13 +170,7 @@ type ServiceStatus struct {
 func (f *Fixture) GetStatus() ([]ServiceStatus, error) {
 	f.t.Helper()
 
-	var args []string
-	if f.ConfigPath != "" {
-		args = append(args, "-f", f.ConfigPath)
-	}
-	args = append(args, "status")
-
-	stdout, _, err := f.Run(args...)
+	stdout, _, err := f.Run("status")
 	if err != nil {
 		return nil, err
 	}
@@ -281,54 +259,6 @@ func (f *Fixture) GetServiceStatus(service string) (*ServiceStatus, error) {
 		}
 	}
 	return nil, fmt.Errorf("service %s not found", service)
-}
-
-// Down stops all services and shuts down the daemon.
-func (f *Fixture) Down() (string, error) {
-	f.t.Helper()
-
-	stdout, stderr, err := f.Run("down")
-	if err != nil {
-		return "", fmt.Errorf("down failed: %v\nstderr: %s", err, stderr)
-	}
-	return stdout, nil
-}
-
-// Stop stops specific services without shutting down the daemon.
-func (f *Fixture) Stop(services ...string) (string, error) {
-	f.t.Helper()
-
-	args := append([]string{"stop"}, services...)
-	stdout, stderr, err := f.Run(args...)
-	if err != nil {
-		return "", fmt.Errorf("stop failed: %v\nstderr: %s", err, stderr)
-	}
-	return stdout, nil
-}
-
-// Restart restarts services.
-func (f *Fixture) Restart(services ...string) (string, error) {
-	f.t.Helper()
-
-	args := append([]string{"restart"}, services...)
-	stdout, stderr, err := f.Run(args...)
-	if err != nil {
-		return "", fmt.Errorf("restart failed: %v\nstderr: %s", err, stderr)
-	}
-	return stdout, nil
-}
-
-// Logs gets logs for services.
-func (f *Fixture) Logs(lines int, services ...string) (string, error) {
-	f.t.Helper()
-
-	args := []string{"logs", "-n", strconv.Itoa(lines)}
-	args = append(args, services...)
-	stdout, stderr, err := f.Run(args...)
-	if err != nil {
-		return "", fmt.Errorf("logs failed: %v\nstderr: %s", err, stderr)
-	}
-	return stdout, nil
 }
 
 // ParseStartedServices parses "Started: [svc1 svc2]" output.
