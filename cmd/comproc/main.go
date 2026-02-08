@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/ryym/comproc/internal/cli"
@@ -111,6 +112,9 @@ func ensureDaemon(configPath, socketPath string) error {
 	}
 
 	cmd := exec.Command(exe, "-f", configPath, "__daemon")
+	// Start the daemon in a new process group so that Ctrl-C (SIGINT sent to
+	// the foreground process group) doesn't propagate from the CLI to the daemon.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Stdin = nil
