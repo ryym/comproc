@@ -13,6 +13,34 @@ import (
 	"github.com/ryym/comproc/internal/protocol"
 )
 
+// RunUp executes the 'up' command — starts services and optionally follows logs.
+func RunUp(socketPath string, services []string, follow bool) error {
+	client := NewClient(socketPath)
+	if err := client.Connect(); err != nil {
+		return fmt.Errorf("failed to connect to daemon: %w", err)
+	}
+	defer client.Close()
+
+	result, err := client.Up(services)
+	if err != nil {
+		return fmt.Errorf("up failed: %w", err)
+	}
+
+	if len(result.Started) > 0 {
+		fmt.Printf("Started: %v\n", result.Started)
+	}
+	if len(result.Failed) > 0 {
+		fmt.Printf("Failed: %v\n", result.Failed)
+		return fmt.Errorf("some services failed to start")
+	}
+
+	if follow {
+		return streamLogs(client, services, 100, true)
+	}
+
+	return nil
+}
+
 // RunDown executes the 'down' command — stops all services and shuts down the daemon.
 func RunDown(socketPath string) error {
 	client := NewClient(socketPath)

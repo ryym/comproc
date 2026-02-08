@@ -80,38 +80,12 @@ func runUp(socketPath, configPath string, args []string) error {
 	follow := fs.Bool("f", false, "Follow log output after starting")
 	fs.Parse(args)
 
-	services := fs.Args()
-
 	// Ensure daemon is running (spawn if needed, wait for socket)
 	if err := ensureDaemon(configPath, socketPath); err != nil {
 		return err
 	}
 
-	// Connect and send Up RPC
-	client := cli.NewClient(socketPath)
-	if err := client.Connect(); err != nil {
-		return fmt.Errorf("failed to connect to daemon: %w", err)
-	}
-	defer client.Close()
-
-	result, err := client.Up(services)
-	if err != nil {
-		return fmt.Errorf("up failed: %w", err)
-	}
-
-	if len(result.Started) > 0 {
-		fmt.Printf("Started: %v\n", result.Started)
-	}
-	if len(result.Failed) > 0 {
-		fmt.Printf("Failed: %v\n", result.Failed)
-		return fmt.Errorf("some services failed to start")
-	}
-
-	if *follow {
-		return cli.RunLogs(socketPath, services, 100, true)
-	}
-
-	return nil
+	return cli.RunUp(socketPath, fs.Args(), *follow)
 }
 
 // ensureDaemon ensures a daemon process is running and its socket is ready.
