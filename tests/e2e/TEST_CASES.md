@@ -5,17 +5,18 @@ Focus: process start/stop correctness, command options, dependency resolution, r
 
 ## 1. up
 
-| #   | Test                              | Description                                                                  |
-| --- | --------------------------------- | ---------------------------------------------------------------------------- |
-| 1.1 | TestUp_SingleService              | Start a single service; verify state=running and PID is assigned             |
-| 1.2 | TestUp_MultipleServices           | Start multiple services at once; all become running                          |
-| 1.3 | TestUp_SpecificServices           | `up svc1 svc2` starts only specified services; others remain stopped         |
-| 1.4 | TestUp_SpecificServiceWithDeps    | `up api` auto-starts its dependency (db) as well                             |
-| 1.5 | TestUp_AlreadyRunning             | Running `up` again while daemon is active does not disrupt existing services |
-| 1.6 | TestUp_StartStoppedService        | After `stop svc`, `up svc` restarts it                                       |
-| 1.7 | TestUp_FollowLogs                 | `up -f` streams logs; Ctrl-C disconnects but daemon keeps running            |
-| 1.8 | TestUp_FollowLogsSpecificServices | `up -f svc1` starts only svc1 and follows its logs                           |
-| 1.9 | TestUp_StartsOnlyNewServices      | While daemon runs, `up newSvc` starts only the not-yet-running service       |
+| #    | Test                              | Description                                                                  |
+| ---- | --------------------------------- | ---------------------------------------------------------------------------- |
+| 1.1  | TestUp_SingleService              | Start a single service; verify state=running and PID is assigned             |
+| 1.2  | TestUp_MultipleServices           | Start multiple services at once; all become running                          |
+| 1.3  | TestUp_SpecificServices           | `up svc1 svc2` starts only specified services; others remain stopped         |
+| 1.4  | TestUp_SpecificServiceWithDeps    | `up api` auto-starts its dependency (db) as well                             |
+| 1.5  | TestUp_AlreadyRunning             | Running `up` again while daemon is active does not disrupt existing services |
+| 1.6  | TestUp_StartStoppedService        | After `stop svc`, `up svc` restarts it                                       |
+| 1.7  | TestUp_FollowLogs                 | `up -f` streams logs; Ctrl-C disconnects but daemon keeps running            |
+| 1.8  | TestUp_FollowLogsSpecificServices | `up -f svc1` starts only svc1 and follows its logs                           |
+| 1.9  | TestUp_StartsOnlyNewServices      | While daemon runs, `up newSvc` starts only the not-yet-running service       |
+| 1.10 | TestUp_MultipleServicesWithDeps   | `up` starts all services respecting dependency order (db→api→frontend)       |
 
 ## 2. down
 

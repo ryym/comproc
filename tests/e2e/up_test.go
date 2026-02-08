@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -105,6 +106,56 @@ services:
 	if status.State != "stopped" {
 		t.Errorf("expected app3 to be stopped, got %s", status.State)
 	}
+}
+
+// 1.10: `up` starts all services respecting dependency order (db→api→frontend).
+func TestUp_MultipleServicesWithDeps(t *testing.T) {
+	skipIfShort(t)
+	t.Parallel()
+
+	f := NewFixture(t)
+	f.WriteConfig(`
+services:
+  db:
+    command: sh -c 'echo "[db] started"; sleep 60'
+  api:
+    command: sh -c 'echo "[api] started"; sleep 60'
+    depends_on:
+      - db
+  frontend:
+    command: sh -c 'echo "[frontend] started"; sleep 60'
+    depends_on:
+      - api
+`)
+	cmd, outBuf, err := f.RunAsync("up", "-f")
+	if err != nil {
+		t.Fatalf("RunAsync failed: %v", err)
+	}
+
+	if err := f.WaitForSocket(10 * time.Second); err != nil {
+		t.Fatalf("WaitForSocket failed: %v", err)
+	}
+
+	for _, svc := range []string{"db", "api", "frontend"} {
+		err = f.WaitForState(svc, "running", 10*time.Second)
+		if err != nil {
+			t.Fatalf("WaitForState %s failed: %v", svc, err)
+		}
+	}
+
+	if err := WaitForContent(outBuf, "[frontend] started", 5*time.Second); err != nil {
+		t.Errorf("expected frontend log: %v", err)
+	}
+
+	output := outBuf.String()
+	if !strings.Contains(output, "[db] started") {
+		t.Errorf("expected db to start")
+	}
+	if !strings.Contains(output, "[api] started") {
+		t.Errorf("expected api to start")
+	}
+
+	InterruptAndWait(cmd)
 }
 
 // 1.4: `up api` auto-starts its dependency (db) as well.
