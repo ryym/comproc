@@ -46,7 +46,6 @@ services:
 	}
 }
 
-// FAILING
 // 5.2: Stopped service shows STATE=stopped, PID="-".
 func TestStatus_AfterStop(t *testing.T) {
 	skipIfShort(t)

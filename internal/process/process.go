@@ -240,7 +240,7 @@ func (p *Process) ResetRestarts() {
 func (p *Process) PID() int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	if p.cmd != nil && p.cmd.Process != nil {
+	if p.State == StateRunning && p.cmd != nil && p.cmd.Process != nil {
 		return p.cmd.Process.Pid
 	}
 	return 0
